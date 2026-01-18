@@ -6,7 +6,9 @@ import {
     AlertCircle, 
     Banknote, 
     AlertTriangle,
-    XCircle // <--- Importiamo l'icona per il Rifiuto
+    XCircle,
+    CalendarDays,
+    Info // <--- Importiamo l'icona per il Credito
 } from 'lucide-vue-next';
 
 export function useEventStyling() {
@@ -30,6 +32,9 @@ export function useEventStyling() {
         const type = meta.type || 'default';
         const status = meta.status || 'pending';
         const requiresAction = meta.requires_action || false;
+        
+        // Verifica se è a credito (importo negativo)
+        const isCredit = (meta.importo_restante || 0) < 0;
         
         const dataRiferimento = evento.start_time || evento.occurs || evento.occurs_at;
         const days = getDaysRemaining(dataRiferimento);
@@ -55,9 +60,9 @@ export function useEventStyling() {
             };
         }
 
-        // --- 2. PRIORITÀ ALLO STATO (User) ---
+        // --- 2. PRIORITÀ ALLO STATO (User - Scadenza Rata Condomino) ---
         
-        // NUOVO: RIFIUTATO (Alta priorità)
+        // RIFIUTATO (Alta priorità)
         if (status === 'rejected') {
             return {
                 color: 'text-red-600 dark:text-red-400 font-bold',
@@ -68,16 +73,29 @@ export function useEventStyling() {
             };
         }
 
+        // PAGATO (Verde)
         if (status === 'paid') {
             return {
-                color: 'text-green-600 dark:text-green-400',
-                bgColor: 'bg-green-50 dark:bg-green-900/20',
-                borderColor: 'border-green-200 dark:border-green-800',
+                color: 'text-emerald-600 dark:text-emerald-400',
+                bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
+                borderColor: 'border-emerald-200 dark:border-emerald-800',
                 icon: CheckCircle2,
                 label: 'Pagato'
             };
         }
         
+        // A CREDITO (Blu Informativo) - Vince sulla scadenza!
+        if (isCredit) {
+            return {
+                color: 'text-blue-600 dark:text-blue-400',
+                bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+                borderColor: 'border-blue-200 dark:border-blue-800',
+                icon: Info,
+                label: 'A Credito'
+            };
+        }
+        
+        // IN VERIFICA (Ambra)
         if (status === 'reported' || requiresAction) {
             return {
                 color: 'text-amber-600 dark:text-amber-400',
@@ -88,9 +106,10 @@ export function useEventStyling() {
             };
         }
         
-
-        // --- 3. URGENZA GENERICA ---
+        // --- 3. URGENZA GENERICA (Rate future non pagate) ---
+        
         if (days < 0) {
+            // SCADUTO (Rosso) - Arriva qui solo se NON è credito, NON pagato, NON rifiutato
             return {
                 color: 'text-red-700 dark:text-red-500 font-bold',
                 bgColor: 'bg-red-100 dark:bg-red-900/30',
@@ -115,12 +134,13 @@ export function useEventStyling() {
                 label: `Scade tra ${days} giorni`
             };
         } else {
+            // FUTURO TRANQUILLO (Blu)
             return {
-                color: 'text-emerald-500 dark:text-emerald-400',
-                bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
-                borderColor: 'border-emerald-200 dark:border-emerald-800',
-                icon: Clock,
-                label: `Tra ${days} giorni`
+                color: 'text-blue-600 dark:text-blue-400', 
+                bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+                borderColor: 'border-blue-200 dark:border-blue-800',
+                icon: CalendarDays,
+                label: `Scade tra ${days} giorni`
             };
         }
     };

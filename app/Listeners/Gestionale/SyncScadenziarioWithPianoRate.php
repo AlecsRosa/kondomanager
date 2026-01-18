@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class SyncScadenziarioWithPianoRate implements ShouldQueue
 {
@@ -22,7 +23,8 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         if ($event->newStatus === StatoPianoRate::APPROVATO) {
             $this->createEvents($event->pianoRate, $event->condominio, $event->esercizio, $event->user);
         } elseif ($event->newStatus === StatoPianoRate::BOZZA) {
-            $this->deleteEvents($event->pianoRate);
+            // Passiamo anche l'utente per pulire la sua cache
+            $this->deleteEvents($event->pianoRate, $event->user);
         }
     }
 
@@ -160,11 +162,26 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     }
                 });
         });
+
+        // AGGIUNTA FONDAMENTALE:
+        // Una volta creati tutti gli eventi, invalidiamo la cache dell'utente che ha approvato il piano.
+        // Così vedrà subito i nuovi task nella inbox.
+        if ($user) {
+            Cache::forget('inbox_count_' . $user->id);
+        }
+        
+        Log::info("Listener: Eventi creati e cache invalidata per User {$user->id}");
     }
 
-    private function deleteEvents($pianoRate)
+    private function deleteEvents($pianoRate, $user)
     {
         Log::info("Listener: Cancellazione batch eventi per Piano {$pianoRate->id}");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();
+
+        // 5. Cache Purge dopo la cancellazione
+        if ($user) {
+            Cache::forget('inbox_count_' . $user->id);
+            Log::info("Listener: Cache inbox svuotata per User {$user->id}");
+        }
     }
 }

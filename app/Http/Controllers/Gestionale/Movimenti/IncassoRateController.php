@@ -17,6 +17,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Cache;
 
 class IncassoRateController extends Controller
 {
@@ -121,6 +122,10 @@ class IncassoRateController extends Controller
                         $userEvent->update(['meta' => $userMeta]);
                     }
                 }
+
+                // C. PURGE CACHE: Aggiorniamo subito il contatore della Inbox
+                // Usiamo l'ID dell'utente corrente (Admin) che ha appena completato l'azione
+                Cache::forget('inbox_count_' . $request->user()->id);
             }
         }
 

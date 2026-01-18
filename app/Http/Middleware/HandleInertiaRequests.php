@@ -50,7 +50,7 @@ class HandleInertiaRequests extends Middleware
                 : null,
 
             // Aggiungiamo il contatore globale
-            'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, 60, function () {
+            'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, now()->addMinutes(10), function () {
                 // Cache di 60 secondi per non appesantire ogni clic
                 return Evento::query()
                     ->whereJsonContains('meta->requires_action', true)

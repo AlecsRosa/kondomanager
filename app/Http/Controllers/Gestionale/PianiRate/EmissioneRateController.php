@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Enums\CategoriaEventoEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
@@ -10,12 +11,16 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
+use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\RataEmessa;
+use App\Models\CategoriaEvento;
+use App\Models\Evento;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class EmissioneRateController extends Controller
 {
@@ -109,8 +114,20 @@ class EmissioneRateController extends Controller
                     // --- EVENTO AGGIUNTO ---
                     // Questo cancella il task "Emettere Rata" dal calendario Admin
                     RataEmessa::dispatch($rata);
+
+                    // 3. CANCELLAZIONE TASK SINCRONA (Fix Problema Cache)
+                    // Cancelliamo subito il task Admin, così quando puliamo la cache è già sparito.
+                    Evento::whereJsonContains('meta->context->rata_id', $rata->id)
+                        ->whereJsonContains('meta->type', 'emissione_rata')
+                        ->delete(); 
+                        // Oppure ->update(['is_completed' => true]) se vuoi lo storico
                 }
             });
+
+            // 4. PURGE CACHE (MANCAVA QUESTO!)
+            // Ora che i task sono cancellati dal DB, puliamo la cache.
+            // Al prossimo reload (back()), il middleware ricalcolerà il conteggio a 0.
+            Cache::forget('inbox_count_' . $request->user()->id);
 
             return back()->with($this->flashSuccess('Rate emesse correttamente.'));
 
@@ -142,28 +159,91 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Impossibile annullare: ci sono già incassi registrati.'));
         }
 
-        try {
-            DB::transaction(function () use ($rata) {
-                $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();
+        // 1. RECUPERO ESERCIZIO (Fix "Missing parameter")
+        // Usiamo il Trait come nel metodo store per ottenere l'esercizio attivo
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
-                // 1. Scollega
+        if (!$esercizio) {
+            return back()->with($this->flashError('Nessun esercizio aperto trovato per generare il link del task.'));
+        }
+
+        try {
+            // Passiamo $esercizio dentro la closure con 'use'
+            DB::transaction(function () use ($rata, $condominio, $pianoRate, $request, $esercizio) { 
+                
+                // A. Cancellazione Contabile
+                $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();
                 $rata->rateQuote()->update(['scrittura_contabile_id' => null]);
 
                 if ($scrittureIds->isNotEmpty()) {
-                    
-                    // 2. Cancella Righe (Fisico)
                     RigaScrittura::whereIn('scrittura_id', $scrittureIds)->delete();
-
-                    // 3. Cancella Testate (FISICO - IMPORTANTE PER LIBERARE IL NUMERO)
                     ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
 
-                // NOTA: Se annulli l'emissione, tecnicamente l'evento "EMETTERE RATA" dovrebbe tornare.
-                // Attualmente il sistema lo ha cancellato. Se vuoi ripristinarlo, bisognerebbe
-                // rilanciare SyncScadenziarioWithPianoRate per questa rata, ma per ora va bene così.
+                // B. RIPRISTINO TASK NELLA INBOX
+                
+                // Recupero categoria admin
+                $catAdmin = CategoriaEvento::where('name', CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value)->first();
+                
+                // Calcolo date
+                $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
+                
+                Evento::firstOrCreate(
+                    [
+                        'title' => "Emettere rata {$rata->numero_rata} - {$condominio->nome}",
+                        'meta->context->rata_id' => $rata->id, 
+                        'meta->type' => 'emissione_rata'
+                    ],
+                    [
+                        'start_time' => $dataPromemoria,
+                        'end_time'   => $dataPromemoria->copy()->addHour(),
+                        'created_by' => $request->user()->id,
+                        'description' => "Ricordati di emettere le ricevute per questa rata entro la scadenza. (Riemissione dopo annullamento)",
+                        'category_id' => $catAdmin?->id,
+                        'visibility'  => VisibilityStatus::HIDDEN->value, 
+                        'is_approved' => true,
+                        'meta' => [
+                            'type'            => 'emissione_rata',
+                            'requires_action' => true, 
+                            'context' => [
+                                'piano_rate_id' => $pianoRate->id,
+                                'rata_id'       => $rata->id
+                            ],
+                            'gestione'          => $pianoRate->gestione->nome ?? 'Gestione',
+                            'condominio_nome'   => $condominio->nome,
+                            'totale_rata'       => $rata->importo_totale,
+                            'anagrafiche_count' => $rata->rateQuote->unique('anagrafica_id')->count(),
+                            'scadenza_reale'    => $rata->data_scadenza->toDateString(),
+                            'numero_rata'       => $rata->numero_rata,
+                            'piano_nome'        => $pianoRate->nome,
+                            
+                            // 🛠️ FIX ROUTE PARAMETER USANDO IL TRAIT
+                            'action_url'        => route('admin.gestionale.esercizi.piani-rate.show', [
+                                'condominio' => $condominio->id,
+                                'esercizio'  => $esercizio->id, // <--- Ecco l'ID corretto preso dal Trait
+                                'pianoRate'  => $pianoRate->id
+                            ])
+                        ],
+                    ]
+                );
+                
+                // Relazioni Many-to-Many
+                $evento = Evento::where('meta->context->rata_id', $rata->id)
+                                ->where('meta->type', 'emissione_rata')
+                                ->first();
+                                
+                if ($evento) {
+                    $evento->condomini()->syncWithoutDetaching([$condominio->id]);
+                    if ($request->user()->anagrafica_id) {
+                        $evento->anagrafiche()->syncWithoutDetaching([$request->user()->anagrafica_id]);
+                    }
+                }
             });
 
-            return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza.'));
+            // 3. AGGIORNA CACHE DOPO ANNULLAMENTO
+            Cache::forget('inbox_count_' . $request->user()->id);
+
+            return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza e il promemoria è stato ripristinato.'));
 
         } catch (\Throwable $e) {
             Log::error("Errore annullamento: " . $e->getMessage());

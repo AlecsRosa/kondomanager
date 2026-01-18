@@ -37,7 +37,7 @@ const truncate = (text: string, length: number = 120) => {
     if (!text) return '';
     return text.length > length ? `${text.slice(0, length)}...` : text;
 };
-const truncatedName = (name: string, length: number = 40) => {
+const truncatedName = (name: string, length: number = 100) => {
     if (!name) return '';
     return name.length > length ? `${name.slice(0, length)}...` : name;
 };

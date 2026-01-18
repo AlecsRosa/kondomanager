@@ -8,6 +8,7 @@ use App\Models\Anagrafica;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Cache;
 
 class ActionInboxController extends Controller
 {
@@ -155,6 +156,10 @@ class ActionInboxController extends Controller
             'is_completed' => true, // O cancellalo se preferisci
             'completed_at' => now(),
         ]);
+
+        // 3. PURGE CACHE: Aggiorniamo subito il contatore della Inbox
+        // Usiamo l'ID dell'utente corrente (Admin) che ha appena completato l'azione
+        Cache::forget('inbox_count_' . $request->user()->id);
 
         return back()->with('success', 'Segnalazione rifiutata e condòmino notificato.');
     }
