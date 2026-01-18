@@ -34,6 +34,7 @@ class EventoResource extends JsonResource
             'occurs_at_human' => Carbon::parse($occursAt)->diffForHumans(),
             'occurs'          => $this->occurs_at,
             'occurs_at'       => Carbon::parse($occursAt)->format('d/m/Y \a\l\l\e H:i'),
+            'updated_at'      => $this->updated_at,
             
             // Relazioni
             'categoria'       => new CategoriaEventoResource($this->whenLoaded('categoria')),

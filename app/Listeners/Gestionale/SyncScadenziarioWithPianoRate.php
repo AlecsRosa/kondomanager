@@ -4,7 +4,7 @@ namespace App\Listeners\Gestionale;
 
 use App\Enums\CategoriaEventoEnum;
 use App\Enums\StatoPianoRate;
-use App\Enums\VisibilityStatus; // Assicurati di importare l'Enum
+use App\Enums\VisibilityStatus; 
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
@@ -23,7 +23,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         if ($event->newStatus === StatoPianoRate::APPROVATO) {
             $this->createEvents($event->pianoRate, $event->condominio, $event->esercizio, $event->user);
         } elseif ($event->newStatus === StatoPianoRate::BOZZA) {
-            // Passiamo anche l'utente per pulire la sua cache
             $this->deleteEvents($event->pianoRate, $event->user);
         }
     }
@@ -46,8 +45,9 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 ['description' => 'Auto']
             );
 
+            // Carichiamo anche l'immobile per generare il dettaglio
             $pianoRate->rate()
-                ->with('rateQuote.anagrafica')
+                ->with(['rateQuote.anagrafica', 'rateQuote.immobile']) // <--- Aggiunto immobile
                 ->lazyById(50) 
                 ->each(function ($rata) use ($condominio, $esercizio, $user, $pianoRate, $catAdmin, $catPublic, $nomeGestione) {
 
@@ -76,7 +76,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'description' => $descAdmin,
                             'end_time'    => $dataPromemoria->copy()->addHour(),
                             'category_id' => $catAdmin->id,
-                            // MODIFICA QUI: HIDDEN per l'admin (sicurezza massima)
                             'visibility'  => VisibilityStatus::HIDDEN->value, 
                             'is_approved' => true,
                             'meta' => [
@@ -118,6 +117,19 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                         $importoVal = $quote->sum('importo');
                         
+                        // 🔥 CREAZIONE DETTAGLIO PER IL DIALOG
+                        $dettaglioQuote = $quote->map(function($q) {
+                            $immobile = $q->immobile;
+                            $desc = $immobile 
+                                ? "Int. {$immobile->interno}" . ($immobile->nome ? " ({$immobile->nome})" : "")
+                                : "Unità immobiliare";
+                                
+                            return [
+                                'descrizione' => $desc,
+                                'importo' => $q->importo
+                            ];
+                        })->values()->toArray();
+
                         $titoloUser = "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}";
                         $dataScadenza = $rata->data_scadenza->copy()->setTime(0, 0);
 
@@ -135,7 +147,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'description' => $descUser,
                             'end_time'    => $dataScadenza->copy()->setTime(23, 59),
                             'category_id' => $catPublic->id,
-                            // MODIFICA QUI: PRIVATE per il condomino (lo vede solo se collegato)
                             'visibility'  => VisibilityStatus::PRIVATE->value,
                             'is_approved' => true,
                             'timezone'    => config('app.timezone'),
@@ -150,6 +161,9 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                                 'importo_originale' => $importoVal,
                                 'importo_pagato' => 0,
                                 'importo_restante' => $importoVal,
+                                // NUOVO CAMPO
+                                'dettaglio_quote' => $dettaglioQuote, 
+                                
                                 'gestione' => $nomeGestione,
                                 'condominio_nome' => $condominio->nome,
                                 'numero_rata' => $rata->numero_rata,
@@ -163,9 +177,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 });
         });
 
-        // AGGIUNTA FONDAMENTALE:
-        // Una volta creati tutti gli eventi, invalidiamo la cache dell'utente che ha approvato il piano.
-        // Così vedrà subito i nuovi task nella inbox.
         if ($user) {
             Cache::forget('inbox_count_' . $user->id);
         }
@@ -178,7 +189,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         Log::info("Listener: Cancellazione batch eventi per Piano {$pianoRate->id}");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();
 
-        // 5. Cache Purge dopo la cancellazione
         if ($user) {
             Cache::forget('inbox_count_' . $user->id);
             Log::info("Listener: Cache inbox svuotata per User {$user->id}");

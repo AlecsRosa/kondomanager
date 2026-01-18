@@ -12,6 +12,7 @@ use App\Models\Evento;
 use App\Models\Immobile;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Models\Gestionale\RataQuote; // <--- Importante
 use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -89,42 +90,73 @@ class IncassoRateController extends Controller
         // 1. Esegui l'azione di business (registra soldi)
         $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
 
-        // 2. LOGICA CHIUSURA TASK (Action Inbox)
-        $relatedTaskId = $request->input('related_task_id');
+        // --- INIZIO AGGIORNAMENTO EVENTI ---
 
+        $paganteId = $request->input('pagante_id');
+        
+        // Recuperiamo gli ID delle QUOTE (rate_quote) dal form
+        $dettaglioPagamenti = $request->input('dettaglio_pagamenti', []);
+        $quoteIds = collect($dettaglioPagamenti)->pluck('rata_id')->filter()->toArray();
+
+        if (!empty($quoteIds) && $paganteId) {
+            
+            // 🔥 FIX FONDAMENTALE: Convertiamo ID Quote -> ID Rate (Padri)
+            // L'evento è legato alla Rata generale, non alla singola quota
+            $rataIdsReali = RataQuote::whereIn('id', $quoteIds)
+                ->pluck('rata_id')
+                ->unique()
+                ->toArray();
+
+            // Ora cerchiamo usando gli ID corretti
+            $eventiDaAggiornare = Evento::where('meta->type', 'scadenza_rata_condomino')
+                ->whereIn('meta->context->rata_id', $rataIdsReali)
+                ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $paganteId))
+                ->get();
+
+            foreach ($eventiDaAggiornare as $evento) {
+                $rataId = $evento->meta['context']['rata_id'] ?? null;
+                
+                // Ricarichiamo la rata dal DB per avere i dati aggiornati
+                $rataFresca = \App\Models\Gestionale\Rata::with('rateQuote')->find($rataId);
+                
+                if ($rataFresca) {
+                    // Filtriamo le quote di questo specifico condomino
+                    $quoteUtente = $rataFresca->rateQuote->where('anagrafica_id', $paganteId);
+                    
+                    $totaleDovuto = $quoteUtente->sum('importo');
+                    $totalePagato = $quoteUtente->sum('importo_pagato');
+                    $restante = $totaleDovuto - $totalePagato;
+
+                    // Aggiorniamo i metadati dell'evento
+                    $meta = $evento->meta;
+                    $meta['importo_pagato'] = $totalePagato;
+                    $meta['importo_restante'] = $restante;
+
+                    // Calcolo dello Stato
+                    if ($restante <= 0.01) {
+                        $meta['status'] = 'paid';
+                    } elseif ($totalePagato > 0.01) {
+                        $meta['status'] = 'partial';
+                    } else {
+                        $meta['status'] = 'pending';
+                    }
+
+                    $evento->update(['meta' => $meta]);
+                }
+            }
+        }
+
+        // C. Chiusura Specifica del Task Admin (Solo se arriviamo dalla Inbox)
+        $relatedTaskId = $request->input('related_task_id');
         if ($relatedTaskId) {
-            // Cerchiamo il task admin
             $task = Evento::find($relatedTaskId);
             
-            // Se esiste e non è già chiuso (per evitare doppi aggiornamenti)
             if ($task && !$task->is_completed) {
-                
-                // A. Chiudiamo il task Admin (Sparisce dalla Inbox)
                 $task->update([
                     'is_completed' => true,
                     'completed_at' => now(),
                 ]);
                 
-                // B. Aggiorniamo l'evento originale dell'utente (Feedback Verde)
-                // Recuperiamo l'ID dell'evento utente dal contesto del task admin
-                $userEventId = $task->meta['context']['related_event_id'] ?? null;
-                
-                if ($userEventId) {
-                    $userEvent = Evento::find($userEventId);
-                    if ($userEvent) {
-                        $userMeta = $userEvent->meta;
-                        $userMeta['status'] = 'paid'; // Diventa verde per l'utente
-                        // Salviamo anche l'importo effettivamente incassato se diverso
-                        $userMeta['importo_pagato'] = $request->input('importo_totale'); 
-                        // FIX: Azzeriamo il restante perché è pagato!
-                        $userMeta['importo_restante'] = 0;
-                        
-                        $userEvent->update(['meta' => $userMeta]);
-                    }
-                }
-
-                // C. PURGE CACHE: Aggiorniamo subito il contatore della Inbox
-                // Usiamo l'ID dell'utente corrente (Admin) che ha appena completato l'azione
                 Cache::forget('inbox_count_' . $request->user()->id);
             }
         }

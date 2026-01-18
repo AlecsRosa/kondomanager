@@ -8,7 +8,7 @@ import {
     AlertTriangle,
     XCircle,
     CalendarDays,
-    Info // <--- Importiamo l'icona per il Credito
+    Info 
 } from 'lucide-vue-next';
 
 export function useEventStyling() {
@@ -33,7 +33,6 @@ export function useEventStyling() {
         const status = meta.status || 'pending';
         const requiresAction = meta.requires_action || false;
         
-        // Verifica se è a credito (importo negativo)
         const isCredit = (meta.importo_restante || 0) < 0;
         
         const dataRiferimento = evento.start_time || evento.occurs || evento.occurs_at;
@@ -62,7 +61,7 @@ export function useEventStyling() {
 
         // --- 2. PRIORITÀ ALLO STATO (User - Scadenza Rata Condomino) ---
         
-        // RIFIUTATO (Alta priorità)
+        // RIFIUTATO
         if (status === 'rejected') {
             return {
                 color: 'text-red-600 dark:text-red-400 font-bold',
@@ -83,8 +82,19 @@ export function useEventStyling() {
                 label: 'Pagato'
             };
         }
+
+        // 🔥 PARZIALE (Arancione)
+        if (status === 'partial') {
+            return {
+                color: 'text-orange-600 dark:text-orange-400',
+                bgColor: 'bg-orange-50 dark:bg-orange-900/20',
+                borderColor: 'border-orange-200 dark:border-orange-800',
+                icon: ClockArrowUp, 
+                label: 'Pagato parzialmente'
+            };
+        }
         
-        // A CREDITO (Blu Informativo) - Vince sulla scadenza!
+        // A CREDITO
         if (isCredit) {
             return {
                 color: 'text-blue-600 dark:text-blue-400',
@@ -95,7 +105,7 @@ export function useEventStyling() {
             };
         }
         
-        // IN VERIFICA (Ambra)
+        // IN VERIFICA
         if (status === 'reported' || requiresAction) {
             return {
                 color: 'text-amber-600 dark:text-amber-400',
@@ -106,10 +116,8 @@ export function useEventStyling() {
             };
         }
         
-        // --- 3. URGENZA GENERICA (Rate future non pagate) ---
-        
+        // --- 3. URGENZA GENERICA ---
         if (days < 0) {
-            // SCADUTO (Rosso) - Arriva qui solo se NON è credito, NON pagato, NON rifiutato
             return {
                 color: 'text-red-700 dark:text-red-500 font-bold',
                 bgColor: 'bg-red-100 dark:bg-red-900/30',
@@ -134,13 +142,12 @@ export function useEventStyling() {
                 label: `Scade tra ${days} giorni`
             };
         } else {
-            // FUTURO TRANQUILLO (Blu)
             return {
                 color: 'text-blue-600 dark:text-blue-400', 
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
                 borderColor: 'border-blue-200 dark:border-blue-800',
                 icon: CalendarDays,
-                label: `Scade tra ${days} giorni`
+                label: `Tra ${days} giorni`
             };
         }
     };
