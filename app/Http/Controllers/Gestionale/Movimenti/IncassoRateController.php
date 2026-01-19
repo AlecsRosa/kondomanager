@@ -114,6 +114,7 @@ class IncassoRateController extends Controller
                 ->get();
 
             foreach ($eventiDaAggiornare as $evento) {
+                
                 $rataId = $evento->meta['context']['rata_id'] ?? null;
                 
                 // Ricarichiamo la rata dal DB per avere i dati aggiornati
@@ -148,6 +149,7 @@ class IncassoRateController extends Controller
 
         // C. Chiusura Specifica del Task Admin (Solo se arriviamo dalla Inbox)
         $relatedTaskId = $request->input('related_task_id');
+
         if ($relatedTaskId) {
             $task = Evento::find($relatedTaskId);
             

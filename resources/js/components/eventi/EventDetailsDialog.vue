@@ -36,8 +36,22 @@ const isExpired = computed(() =>
     daysDiff.value < 0 && 
     !isCredit.value && 
     !isPaid.value && 
-    !isReported.value &&
+    !isReported.value && 
     !isPartial.value 
+);
+
+// 🔥 LOGICA DETERMINISTICA (Inserita qui)
+// Se il flag esiste, usalo. Se non esiste (vecchi eventi), assumiamo false per prudenza.
+const isEmitted = computed(() => {
+    return props.evento?.meta?.is_emitted === true;
+});
+
+const showNotEmittedWarning = computed(() => 
+    isCondomino.value && 
+    !isEmitted.value && 
+    !isPaid.value && 
+    !isReported.value && 
+    !isPartial.value
 );
 
 const formatDate = (dateStr: string) => { if(!dateStr) return ''; return format(new Date(dateStr), "d MMMM yyyy", { locale: it }); };
@@ -148,9 +162,9 @@ const reportPayment = () => {
 
                             <div v-else-if="isPaid" class="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800 text-center leading-relaxed">
                                 <span class="font-semibold block mb-1 flex items-center justify-center gap-1">
-                                   Pagamento Confermato
+                                   <CheckCircle class="w-3 h-3"/> Pagamento Confermato
                                 </span>
-                                Il pagamento dell'intera rata è stato registrato con successo.
+                                Il pagamento dell'intera rata è stato registrato con successo{{ evento.updated_at ? ' il ' + formatDate(evento.updated_at) : '' }}.
                             </div>
 
                             <div v-else-if="isPartial" class="text-xs text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg border border-orange-100 dark:border-orange-800 text-center leading-relaxed">
@@ -201,7 +215,7 @@ const reportPayment = () => {
                         <div class="flex items-center justify-between p-3 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/50">
                             <div class="flex flex-col">
                                 <span class="text-orange-700 dark:text-orange-500 flex items-center gap-2 font-semibold text-sm">
-                                    <ClockArrowUp class="w-4 h-4" /> Pagato parzialmente
+                                    <ClockArrowUp class="w-4 h-4" /> Pagato Parzialmente
                                 </span>
                                 <span class="text-xs text-orange-600/80 mt-1">
                                     Versati: <strong>{{ euro(evento.meta.importo_pagato) }}</strong> su {{ euro(evento.meta.importo_originale) }}
@@ -222,6 +236,21 @@ const reportPayment = () => {
                         </Button>
                     </div>
 
+                    <div v-if="showNotEmittedWarning" class="mb-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                        <div class="flex items-start gap-3">
+                            <div>
+                                <h4 class="font-bold text-amber-800 dark:text-amber-400 text-sm mb-1">
+                                    Attendi l'emissione della rata
+                                </h4>
+                                <p class="text-xs text-amber-700 dark:text-amber-500/90 leading-relaxed">
+                                    Questa rata è prevista dal piano ma <strong>non è ancora stata emessa ufficialmente</strong> dall'amministratore.
+                                    <br class="mb-1">
+                                    Ti consigliamo di non effettuare il pagamento ora per garantire la corretta attribuzione in caso di subentro.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div v-if="isCondomino && !isCredit && !isRejected && !isPaid && !isReported && !isPartial" class="mb-6 space-y-4">
                         <div class="flex items-center justify-between p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
                             <span class="text-amber-700 dark:text-amber-500 flex items-center gap-2 font-semibold text-sm"><AlertCircle class="w-4 h-4" /> Resta da Pagare</span>
@@ -229,11 +258,14 @@ const reportPayment = () => {
                         </div>
                         
                         <Button 
-                            class="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold transition-all rounded-lg"
-                            :disabled="isProcessing"
+                            class="w-full h-11 shadow-sm font-semibold transition-all rounded-lg"
+                            :class="showNotEmittedWarning 
+                                ? 'bg-slate-300 text-slate-600 hover:bg-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-400' 
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'"
+                            :disabled="isProcessing || showNotEmittedWarning" 
                             @click="reportPayment"
                         >
-                            {{ isProcessing ? 'Invio in corso...' : 'Ho già effettuato il pagamento' }}
+                            {{ isProcessing ? 'Invio in corso...' : (showNotEmittedWarning ? 'Pagamento non ancora disponibile' : 'Ho già effettuato il pagamento') }}
                         </Button>
                     </div>
 
@@ -263,7 +295,7 @@ const reportPayment = () => {
                             </span>
                         </div>
                         <div class="text-right">
-                            <span class="text-[10px] uppercase text-emerald-600/70 font-bold block">Importo Totale</span>
+                            <span class="text-[10px] uppercase text-emerald-600/70 font-bold block">Totale Versato</span>
                             <span class="font-bold text-lg text-emerald-700 dark:text-emerald-500">
                                 {{ 
                                     evento.meta.importo_pagato 

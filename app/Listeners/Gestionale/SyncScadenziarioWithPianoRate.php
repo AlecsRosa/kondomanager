@@ -20,6 +20,9 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
     public function handle(PianoRateStatusUpdated $event): void
     {
+        // 🔥 FIX QUI: Aggiunto ->value perché l'Enum non si converte in stringa da solo
+        Log::info("Listener avviato per Piano Rate ID: {$event->pianoRate->id} - Stato: {$event->newStatus->value}");
+
         if ($event->newStatus === StatoPianoRate::APPROVATO) {
             $this->createEvents($event->pianoRate, $event->condominio, $event->esercizio, $event->user);
         } elseif ($event->newStatus === StatoPianoRate::BOZZA) {
@@ -29,11 +32,12 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
     private function createEvents($pianoRate, $condominio, $esercizio, $user)
     {
-        Log::info("Listener: Creazione eventi per Piano {$pianoRate->id}");
+        Log::info("Inizio creazione eventi...");
 
         $pianoRate->loadMissing('gestione');
         $nomeGestione = $pianoRate->gestione->nome ?? 'Gestione';
 
+        // Avwiamo la transazione
         DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione) {
 
             $catAdmin = CategoriaEvento::firstOrCreate(
@@ -45,153 +49,167 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 ['description' => 'Auto']
             );
 
-            // Carichiamo anche l'immobile per generare il dettaglio
-            $pianoRate->rate()
-                ->with(['rateQuote.anagrafica', 'rateQuote.immobile']) // <--- Aggiunto immobile
-                ->lazyById(50) 
-                ->each(function ($rata) use ($condominio, $esercizio, $user, $pianoRate, $catAdmin, $catPublic, $nomeGestione) {
+            // Carichiamo le rate
+            $rate = $pianoRate->rate()
+                ->with(['rateQuote.anagrafica', 'rateQuote.immobile']) 
+                ->get(); 
 
-                    // --- 1. EVENTO ADMIN ---
-                    $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
-                    $totaleRata = $rata->importo_totale;
-                    $numAnagrafiche = $rata->rateQuote->unique('anagrafica_id')->count();
+            Log::info("Trovate " . $rate->count() . " rate da processare.");
 
-                    $titoloAdmin = "Emettere rata {$rata->numero_rata} - {$condominio->nome}";
-                    $descAdmin = "Ricordati di emettere le ricevute per questa rata entro la scadenza. " .
-                                 "Tutte le anagrafiche coinvolte riceveranno notifica dell'avvenuta emissione.";
+            foreach ($rate as $rata) {
 
-                    $urlEmissione = route('admin.gestionale.esercizi.piani-rate.show', [
-                        'condominio' => $condominio->id,
-                        'esercizio'  => $esercizio->id,
-                        'pianoRate'  => $pianoRate->id
+                // --- 1. EVENTO ADMIN: EMISSIONE ---
+                $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
+                $titoloAdmin = "Emettere rata {$rata->numero_rata} - {$condominio->nome}";
+
+                $urlEmissione = route('admin.gestionale.esercizi.piani-rate.show', [
+                    'condominio' => $condominio->id,
+                    'esercizio'  => $esercizio->id,
+                    'pianoRate'  => $pianoRate->id
+                ]);
+
+                $eventoAdmin = Evento::firstOrCreate(
+                    [
+                        'title'       => $titoloAdmin,
+                        'start_time'  => $dataPromemoria,
+                    ],
+                    [
+                        'created_by'  => $user->id,
+                        'description' => "Ricordati di emettere le ricevute per questa rata entro la scadenza. Tutte le anagrafiche coinvolte riceveranno notifica dell'avvenuta emissione.",
+                        'end_time'    => $dataPromemoria->copy()->addHour(),
+                        'category_id' => $catAdmin->id,
+                        'visibility'  => VisibilityStatus::HIDDEN->value, 
+                        'is_approved' => true,
+                        'meta' => [
+                            'type'              => 'emissione_rata',
+                            'is_emitted'        => false,
+                            'requires_action'   => true, 
+                            'gestione'          => $nomeGestione,
+                            'condominio_nome'   => $condominio->nome,
+                            'totale_rata'       => $rata->importo_totale,
+                            'numero_rata'       => $rata->numero_rata,
+                            'action_url'        => $urlEmissione,
+                            'context' => [
+                                'piano_rate_id' => $pianoRate->id,
+                                'rata_id'       => $rata->id
+                            ],
+                        ],
+                    ]
+                );
+                
+                $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
+                if ($user->anagrafica_id) $eventoAdmin->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
+
+
+                // --- 1-BIS. EVENTO ADMIN: VERIFICA INCASSI ---
+                $dataCheck = $rata->data_scadenza->copy()->addDays(4)->setTime(9, 0); 
+                $titoloCheck = "Verifica incassi - Rata {$rata->numero_rata} ({$condominio->nome})";
+                
+                $urlIncassi = route('admin.gestionale.movimenti-rate.create', ['condominio' => $condominio->id]);
+
+                $eventoCheck = Evento::firstOrCreate(
+                    [
+                        'title'      => $titoloCheck,
+                        'start_time' => $dataCheck,
+                    ],
+                    [
+                        'created_by'  => $user->id,
+                        'end_time'    => $dataCheck->copy()->addHour(),
+                        'description' => "La rata è scaduta il " . $rata->data_scadenza->format('d/m/Y') . ". I tempi tecnici bancari sono trascorsi: controlla l'estratto conto e registra gli incassi cumulativi.",
+                        'category_id' => $catAdmin->id, 
+                        'visibility'  => VisibilityStatus::HIDDEN->value,
+                        'is_approved' => true,
+                        'meta' => [
+                            'type'            => 'controllo_incassi',
+                            'requires_action' => true,
+                            'condominio_nome' => $condominio->nome,
+                            'numero_rata'     => $rata->numero_rata,
+                            'gestione'        => $nomeGestione,
+                            'action_url'      => $urlIncassi,
+                            'context' => [
+                                'piano_rate_id' => $pianoRate->id,
+                                'rata_id'       => $rata->id
+                            ],
+                        ],
+                    ]
+                );
+                
+                $eventoCheck->condomini()->syncWithoutDetaching([$condominio->id]);
+                if ($user->anagrafica_id) $eventoCheck->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
+
+
+                // --- 2. EVENTI CONDÒMINI ---
+                $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
+
+                foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
+                    $anagrafica = $quote->first()->anagrafica;
+                    if (!$anagrafica) continue;
+
+                    $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
+                        ->whereJsonContains('meta->context->rata_id', $rata->id)
+                        ->whereJsonContains('meta->type', 'scadenza_rata_condomino')
+                        ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
+                        ->exists();
+
+                    if ($esiste) continue;
+
+                    $importoVal = $quote->sum('importo');
+                    $dettaglioQuote = $quote->map(function($q) {
+                        $immobile = $q->immobile;
+                        $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
+                        return ['descrizione' => $desc, 'importo' => $q->importo];
+                    })->values()->toArray();
+
+                    $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale. Effettua il pagamento entro la data indicata per evitare solleciti.";
+                    if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
+
+                    $eventoUser = Evento::create([
+                        'title'       => "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
+                        'start_time'  => $rata->data_scadenza->copy()->setTime(0, 0),
+                        'end_time'    => $rata->data_scadenza->copy()->setTime(23, 59),
+                        'created_by'  => $user->id,
+                        'description' => $descUser,
+                        'category_id' => $catPublic->id,
+                        'visibility'  => VisibilityStatus::PRIVATE->value,
+                        'is_approved' => true,
+                        'timezone'    => config('app.timezone'),
+                        'meta'        => [
+                            'type'              => 'scadenza_rata_condomino',
+                            'is_emitted'        => false, 
+                            'requires_action'   => false, 
+                            'status'            => 'pending',
+                            'importo_originale' => $importoVal,
+                            'importo_pagato'    => 0,
+                            'importo_restante'  => $importoVal,
+                            'dettaglio_quote'   => $dettaglioQuote, 
+                            'gestione'          => $nomeGestione,
+                            'condominio_nome'   => $condominio->nome,
+                            'numero_rata'       => $rata->numero_rata,
+                            'piano_nome'        => $pianoRate->nome,
+                            'context' => [
+                                'piano_rate_id' => $pianoRate->id,
+                                'rata_id'       => $rata->id
+                            ],
+                        ],
                     ]);
 
-                    $eventoAdmin = Evento::firstOrCreate(
-                        [
-                            'title'      => $titoloAdmin,
-                            'start_time' => $dataPromemoria,
-                            'created_by' => $user->id,
-                        ],
-                        [
-                            'description' => $descAdmin,
-                            'end_time'    => $dataPromemoria->copy()->addHour(),
-                            'category_id' => $catAdmin->id,
-                            'visibility'  => VisibilityStatus::HIDDEN->value, 
-                            'is_approved' => true,
-                            'meta' => [
-                                'type'            => 'emissione_rata',
-                                'requires_action' => true, 
-                                'context' => [
-                                    'piano_rate_id' => $pianoRate->id,
-                                    'rata_id'       => $rata->id
-                                ],
-                                'gestione'          => $nomeGestione,
-                                'condominio_nome'   => $condominio->nome,
-                                'totale_rata'       => $totaleRata,
-                                'anagrafiche_count' => $numAnagrafiche,
-                                'scadenza_reale'    => $rata->data_scadenza->toDateString(),
-                                'numero_rata'       => $rata->numero_rata,
-                                'piano_nome'        => $pianoRate->nome,
-                                'action_url'        => $urlEmissione
-                            ],
-                        ]
-                    );
-                    
-                    if ($user->anagrafica_id) $eventoAdmin->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
-                    $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
-
-                    // --- 2. EVENTI CONDÒMINI ---
-                    $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
-
-                    foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
-                        $anagrafica = $quote->first()->anagrafica;
-                        if (!$anagrafica) continue;
-
-                        $esiste = Evento::query()
-                            ->whereJsonContains('meta->context->rata_id', $rata->id)
-                            ->whereJsonContains('meta->type', 'scadenza_rata_condomino')
-                            ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
-                            ->exists();
-
-                        if ($esiste) continue;
-
-                        $importoVal = $quote->sum('importo');
-                        
-                        // 🔥 CREAZIONE DETTAGLIO PER IL DIALOG
-                        $dettaglioQuote = $quote->map(function($q) {
-                            $immobile = $q->immobile;
-                            $desc = $immobile 
-                                ? "Int. {$immobile->interno}" . ($immobile->nome ? " ({$immobile->nome})" : "")
-                                : "Unità immobiliare";
-                                
-                            return [
-                                'descrizione' => $desc,
-                                'importo' => $q->importo
-                            ];
-                        })->values()->toArray();
-
-                        $titoloUser = "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}";
-                        $dataScadenza = $rata->data_scadenza->copy()->setTime(0, 0);
-
-                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale. " .
-                                    "Effettua il pagamento entro la data indicata per evitare solleciti.";
-                        
-                        if (!empty($rata->note)) {
-                            $descUser .= "\n\nNote aggiuntive: {$rata->note}";
-                        }
-
-                        $eventoUser = Evento::create([
-                            'title'       => $titoloUser,
-                            'start_time'  => $dataScadenza,
-                            'created_by'  => $user->id,
-                            'description' => $descUser,
-                            'end_time'    => $dataScadenza->copy()->setTime(23, 59),
-                            'category_id' => $catPublic->id,
-                            'visibility'  => VisibilityStatus::PRIVATE->value,
-                            'is_approved' => true,
-                            'timezone'    => config('app.timezone'),
-                            'meta'        => [
-                                'type' => 'scadenza_rata_condomino',
-                                'requires_action' => false, 
-                                'status' => 'pending',
-                                'context' => [
-                                    'piano_rate_id' => $pianoRate->id,
-                                    'rata_id'       => $rata->id
-                                ],
-                                'importo_originale' => $importoVal,
-                                'importo_pagato' => 0,
-                                'importo_restante' => $importoVal,
-                                // NUOVO CAMPO
-                                'dettaglio_quote' => $dettaglioQuote, 
-                                
-                                'gestione' => $nomeGestione,
-                                'condominio_nome' => $condominio->nome,
-                                'numero_rata' => $rata->numero_rata,
-                                'piano_nome' => $pianoRate->nome
-                            ],
-                        ]);
-
-                        $eventoUser->anagrafiche()->syncWithoutDetaching([$anagraficaId]);
-                        $eventoUser->condomini()->syncWithoutDetaching([$condominio->id]);
-                    }
-                });
-        });
+                    $eventoUser->anagrafiche()->attach($anagraficaId);
+                    $eventoUser->condomini()->attach($condominio->id);
+                }
+            }
+        }); // Fine Transaction
 
         if ($user) {
             Cache::forget('inbox_count_' . $user->id);
         }
         
-        Log::info("Listener: Eventi creati e cache invalidata per User {$user->id}");
+        Log::info("Listener: Eventi creati con successo.");
     }
 
     private function deleteEvents($pianoRate, $user)
     {
-        Log::info("Listener: Cancellazione batch eventi per Piano {$pianoRate->id}");
+        Log::info("Cancellazione eventi...");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();
-
-        if ($user) {
-            Cache::forget('inbox_count_' . $user->id);
-            Log::info("Listener: Cache inbox svuotata per User {$user->id}");
-        }
+        if ($user) Cache::forget('inbox_count_' . $user->id);
     }
 }

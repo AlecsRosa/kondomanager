@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { ref } from 'vue';
 import { 
     Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, 
-    ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User
+    ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User,
+    ArrowUpFromLine, ArrowDownToLine 
 } from 'lucide-vue-next';
 import { 
     Dialog, DialogContent, DialogDescription, 
@@ -23,29 +24,25 @@ const props = defineProps<{
 }>();
 
 const isLoading = ref(false);
-// --- REJECT MODAL STATE ---
 const isRejectModalOpen = ref(false);
 const taskToReject = ref<any>(null);
 
-const rejectForm = useForm({
-    reason: '',
-});
+const rejectForm = useForm({ reason: '' });
 
 const openRejectModal = (task: any) => {
     taskToReject.value = task;
-    rejectForm.reason = ''; // Reset
+    rejectForm.reason = ''; 
     rejectForm.clearErrors();
     isRejectModalOpen.value = true;
 };
 
 const closeRejectModal = () => {
     isRejectModalOpen.value = false;
-    setTimeout(() => taskToReject.value = null, 300); // Pulisci dopo animazione
+    setTimeout(() => taskToReject.value = null, 300); 
 };
 
 const confirmReject = () => {
     if (!taskToReject.value) return;
-
     rejectForm.post(route('admin.inbox.reject', taskToReject.value.id), {
         preserveScroll: true,
         onSuccess: () => closeRejectModal(),
@@ -54,30 +51,53 @@ const confirmReject = () => {
 
 // --- DESIGN TOKENS ---
 const STATUS_TOKENS: Record<string, { border: string, bg: string, iconBg: string, iconColor: string, text: string }> = {
+    // SCADUTO (Solo per bordi/sfondi)
     expired: { 
         border: 'border-l-red-500', 
         bg: 'hover:bg-red-50/30', 
-        iconBg: 'bg-red-100',
+        iconBg: 'bg-red-100', // Non usato se manteniamo l'icona del tipo
         iconColor: 'text-red-600',
         text: 'text-red-700' 
     },
-    pending_verification: { 
+    
+    // CONTROLLO INCASSI
+    controllo_incassi: { 
+        border: 'border-l-purple-500', 
+        bg: 'hover:bg-purple-50/30', 
+        iconBg: 'bg-purple-100',
+        iconColor: 'text-purple-600',
+        text: 'text-purple-700' 
+    },
+
+    // EMISSIONE RATA
+    emissione_rata: { 
+        border: 'border-l-blue-500', 
+        bg: 'hover:bg-blue-50/30', 
+        iconBg: 'bg-blue-100',
+        iconColor: 'text-blue-600',
+        text: 'text-blue-700' 
+    },
+
+    // SEGNALAZIONE UTENTE
+    verifica_pagamento: { 
         border: 'border-l-amber-500', 
         bg: 'hover:bg-amber-50/30', 
         iconBg: 'bg-amber-100',
         iconColor: 'text-amber-600',
         text: 'text-amber-700' 
     },
+
+    // DEFAULT
     scheduled: { 
-        border: 'border-l-blue-500', 
+        border: 'border-l-slate-400', 
         bg: 'hover:bg-slate-50', 
-        iconBg: 'bg-blue-100',
-        iconColor: 'text-blue-600',
+        iconBg: 'bg-slate-100',
+        iconColor: 'text-slate-600',
         text: 'text-slate-700' 
     }
 };
 
-// --- HELPERS ---
+// --- HELPERS FILTRI ---
 const setFilter = (filter: string) => {
     if (props.activeFilter === filter) return;
     isLoading.value = true;
@@ -91,14 +111,35 @@ const setFilter = (filter: string) => {
 
 const formatMoney = (val: any) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val/100);
 
-const getTaskStyle = (status: string) => {
-    const token = STATUS_TOKENS[status] || STATUS_TOKENS.scheduled;
+// --- LOGICA COLORI IBRIDA ---
+
+// 1. Recupera il token "Nativo" del tipo (es. Viola per Incassi)
+const getNativeToken = (task: any) => {
+    return STATUS_TOKENS[task.type] || STATUS_TOKENS[task.status] || STATUS_TOKENS.scheduled;
+};
+
+// 2. Recupera il token "Urgenza" (Rosso se scaduto, altrimenti Nativo)
+const getUrgencyToken = (task: any) => {
+    if (task.status === 'expired') return STATUS_TOKENS.expired;
+    return getNativeToken(task);
+};
+
+// A. STILE CARD (Bordo/Sfondo) -> Segue l'URGENZA (Rosso se scaduto)
+const getTaskStyle = (task: any) => {
+    const token = getUrgencyToken(task);
     return `${token.border} ${token.bg}`;
 };
 
-const getTaskIconStyle = (status: string) => {
-    const token = STATUS_TOKENS[status] || STATUS_TOKENS.scheduled;
+// B. STILE ICONA -> Segue SEMPRE IL TIPO (Viola/Blu) per contesto
+const getTaskIconStyle = (task: any) => {
+    const token = getNativeToken(task);
     return `${token.iconBg} ${token.iconColor}`;
+};
+
+// C. STILE TESTO -> Segue SEMPRE IL TIPO (Viola/Blu) per contesto
+const getTaskTextColor = (task: any) => {
+    const token = getNativeToken(task);
+    return token.text;
 };
 
 const getDateLabel = (dateStr: string | null, status: string) => {
@@ -107,7 +148,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
     if (status === 'expired') {
         const diffTime = Math.abs(new Date().getTime() - date.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        return diffDays === 1 ? 'Ieri' : `${diffDays}gg ritardo`;
+        return diffDays === 1 ? 'Ieri' : `${diffDays} giorni ritardo`;
     }
     return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
 };
@@ -139,12 +180,10 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         <span class="text-[10px] uppercase tracking-widest text-slate-500">
                             Attività in scadenza
                         </span>
-
                         <div class="flex items-center justify-between">
                             <span class="text-3xl font-semibold text-white tabular-nums">
                                 {{ counts.all }}
                             </span>
-
                             <div class="h-2 w-2 rounded-full bg-red-500/80"></div>
                         </div>
                     </div>
@@ -165,15 +204,15 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                 </button>
 
                 <button @click="setFilter('payments')" 
-                     class="group flex flex-col justify-between p-5 rounded-xl border bg-white dark:bg-slate-900 transition-all duration-200 text-left hover:border-amber-300 hover:shadow-md"
-                     :class="activeFilter === 'payments' ? 'border-amber-500 ring-1 ring-amber-500 shadow-sm' : 'border-slate-200 dark:border-slate-800'">
+                     class="group flex flex-col justify-between p-5 rounded-xl border bg-white dark:bg-slate-900 transition-all duration-200 text-left hover:border-purple-300 hover:shadow-md"
+                     :class="activeFilter === 'payments' ? 'border-purple-500 ring-1 ring-purple-500 shadow-sm' : 'border-slate-200 dark:border-slate-800'">
                     <div class="flex justify-between items-start mb-4">
-                        <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
-                            <Banknote class="w-6 h-6" />
+                        <div class="p-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400">
+                            <ArrowDownToLine class="w-6 h-6" />
                         </div>
                         <span class="text-3xl font-bold text-slate-900 dark:text-white">{{ counts.payments }}</span>
                     </div>
-                    <span class="text-sm font-semibold text-slate-500 group-hover:text-amber-600 transition-colors">Verifiche incassi</span>
+                    <span class="text-sm font-semibold text-slate-500 group-hover:text-purple-600 transition-colors">Verifiche incassi</span>
                 </button>
 
                 <button @click="setFilter('maintenance')" 
@@ -217,16 +256,23 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                     <div v-if="tasks.data.length > 0">
                         <div v-for="(task, index) in tasks.data" :key="task.id" 
                              class="group relative grid grid-cols-1 md:grid-cols-12 gap-4 px-6 py-5 border-b border-slate-100 dark:border-slate-800 items-center transition-all border-l-[3px]"
-                             :class="getTaskStyle(task.status)">
+                             :class="getTaskStyle(task)">
                             
                             <div class="col-span-2 flex items-center gap-3">
+                                
                                 <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" 
-                                     :class="getTaskIconStyle(task.status)">
-                                    <Clock v-if="task.status === 'expired'" class="w-4 h-4" />
+                                     :class="getTaskIconStyle(task)">
+                                    
+                                    <ArrowDownToLine v-if="task.type === 'controllo_incassi'" class="w-4 h-4" />
+                                    <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-4 h-4" />
+                                    <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-4 h-4" />
+                                    <Clock v-else-if="task.status === 'expired'" class="w-4 h-4" />
                                     <CalendarDays v-else class="w-4 h-4" />
                                 </div>
+
                                 <div class="flex flex-col">
-                                    <span class="text-sm font-bold tabular-nums leading-none" :class="STATUS_TOKENS[task.status]?.text">
+                                    <span class="text-sm font-bold tabular-nums leading-none" 
+                                          :class="task.status === 'expired' ? 'text-red-600' : getTaskTextColor(task)">
                                         {{ getDateLabel(task.date, task.status) }}
                                     </span>
                                     <span v-if="task.status !== 'expired'" class="text-[11px] text-slate-400 mt-1 capitalize">
@@ -243,7 +289,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                             </div>
 
                             <div class="col-span-4 flex flex-col justify-center py-1">
-                                <div class="text-sm font-semibold text-slate-900 dark:text-white mb-1 leading-tight">
+                                <div class="text-sm font-bold mb-1 leading-tight" :class="getTaskTextColor(task)">
                                     {{ task.title }}
                                 </div>
                                 
@@ -252,7 +298,6 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                 </p>
 
                                 <div class="flex items-center gap-3">
-                                    
                                     <span v-if="task.amount" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0 shadow-sm">
                                         {{ formatMoney(task.amount) }}
                                     </span>
@@ -268,7 +313,6 @@ const getDateLabel = (dateStr: string | null, status: string) => {
 
                             <div class="col-span-3 flex justify-end items-center gap-2">
                                 <template v-if="task.type === 'verifica_pagamento'">
-
                                     <Button 
                                         size="sm" 
                                         variant="ghost" 

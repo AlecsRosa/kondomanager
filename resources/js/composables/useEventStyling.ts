@@ -1,10 +1,10 @@
 import { 
-    Clock, 
     ClockAlert, 
     ClockArrowUp,
     CheckCircle2, 
     AlertCircle, 
-    Banknote, 
+    ArrowUpFromLine, 
+    ArrowDownToLine, 
     AlertTriangle,
     XCircle,
     CalendarDays,
@@ -54,12 +54,35 @@ export function useEventStyling() {
                 color: 'text-blue-600 dark:text-blue-400',
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
                 borderColor: 'border-blue-200 dark:border-blue-800',
-                icon: Banknote,
+                icon: ArrowUpFromLine, 
                 label: 'Da emettere'
             };
         }
 
-        // --- 2. PRIORITÀ ALLO STATO (User - Scadenza Rata Condomino) ---
+        // --- 2. NUOVO BLOCCO: CONTROLLO INCASSI (Admin) ---
+        if (type === 'controllo_incassi') {
+            // Se sono passati giorni dalla data prevista per il controllo
+            if (days < 0) {
+                return {
+                    color: 'text-red-700 dark:text-red-500 font-bold',
+                    bgColor: 'bg-red-50 dark:bg-red-900/20',
+                    borderColor: 'border-red-200 dark:border-red-800',
+                    icon: AlertCircle,
+                    label: 'Verifica urgente incassi'
+                };
+            }
+            
+            // VIOLA + FRECCIA IN ENTRATA
+            return {
+                color: 'text-purple-600 dark:text-purple-400', 
+                bgColor: 'bg-purple-50 dark:bg-purple-900/20',
+                borderColor: 'border-purple-200 dark:border-purple-800',
+                icon: ArrowDownToLine,
+                label: 'Verifica incassi'
+            };
+        }
+
+        // --- 3. PRIORITÀ ALLO STATO (User - Scadenza Rata Condomino) ---
         
         // RIFIUTATO
         if (status === 'rejected') {
@@ -83,7 +106,7 @@ export function useEventStyling() {
             };
         }
 
-        // 🔥 PARZIALE (Arancione)
+        // PARZIALE (Arancione)
         if (status === 'partial') {
             return {
                 color: 'text-orange-600 dark:text-orange-400',
@@ -101,7 +124,7 @@ export function useEventStyling() {
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
                 borderColor: 'border-blue-200 dark:border-blue-800',
                 icon: Info,
-                label: 'A Credito'
+                label: 'A credito'
             };
         }
         
@@ -116,7 +139,7 @@ export function useEventStyling() {
             };
         }
         
-        // --- 3. URGENZA GENERICA ---
+        // --- 4. URGENZA GENERICA ---
         if (days < 0) {
             return {
                 color: 'text-red-700 dark:text-red-500 font-bold',

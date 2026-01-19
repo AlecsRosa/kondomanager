@@ -225,44 +225,6 @@ onMounted(async () => {
     }
 });
 
-// --- HOOKS: PREFILL DA URL ---
-/* onMounted(() => {
-    // Leggiamo i parametri dalla Query String (inviati dall'Action Inbox)
-    const params = new URLSearchParams(window.location.search);
-    const taskId = params.get('related_task_id');
-    const prefillAnagrafica = params.get('prefill_anagrafica_id');
-    const prefillImporto = params.get('prefill_importo');
-    const prefillDesc = params.get('prefill_descrizione');
-    const prefillRataId = params.get('prefill_rata_id')
-    // Nota: prefill_rata_id c'è, ma lasciamo che l'algoritmo 'Auto' distribuisca sul debito più vecchio per correttezza contabile
-
-    if (prefillDesc) {
-        form.descrizione = prefillDesc;
-    }
-
-    if (prefillImporto) {
-        form.importo_totale = parseFloat(prefillImporto);
-    }
-
-    // NUOVO: Impostiamo la priorità prima di scaricare i debiti
-    if (prefillRataId) {
-        setPriorityRataId(parseInt(prefillRataId));
-    } else {
-        setPriorityRataId(null);
-    }
-
-    if (prefillAnagrafica) {
-        // Impostando questo ID, scatta il watcher qui sopra ⬆️
-        // Il watcher chiama fetchDebiti -> che scarica le rate -> che vede l'importo -> che lancia distributeAuto()
-        // Tutto automatico!
-        form.pagante_id = parseInt(prefillAnagrafica);
-    }
-
-    if (taskId) {
-        form.related_task_id = parseInt(taskId);
-    }
-    
-}); */
 </script>
 
 <template>
@@ -423,11 +385,18 @@ onMounted(async () => {
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
                                     <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="[r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50', r.residuo < 0 ? 'bg-blue-50/30' : '']">
-                                        
+
                                         <td class="p-3 pl-4 align-top">
                                             <div class="flex flex-col">
                                                 <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
-                                                <span v-if="r.scaduta && r.residuo > 0" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded"><AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta</span>
+                                                
+                                                <span v-if="r.is_emitted === false" class="mt-1 inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" title="Questa rata non è stata ancora emessa contabilmente">
+                                                    <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
+                                                </span>
+
+                                                <span v-if="r.scaduta && r.residuo > 0" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded">
+                                                    <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
+                                                </span>
                                             </div>
                                         </td>
 

@@ -33,15 +33,15 @@ export interface Rata {
 
     // --- CAMPI AGGIUNTI PER FAR FUNZIONARE LA PRIORITÀ ---
     // Sono opzionali (?) perché dipendono dalla query del backend
-    
+
     /** ID della rata padre (fondamentale per collegare le quote alla rata originale) */
     rata_padre_id?: number;
-    
     /** ID alternativo della rata (fallback) */
     rata_id?: number;
-    
     /** Alias per data_scadenza usato per l'ordinamento */
     scadenza?: string;
+    /** Controlla se la rata è stata emessa oppure no */
+    is_emitted?: boolean;
 }
 
 /**

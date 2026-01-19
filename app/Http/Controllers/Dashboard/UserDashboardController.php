@@ -96,7 +96,7 @@ class UserDashboardController extends Controller
             /** @var \Illuminate\Pagination\LengthAwarePaginator $comunicazioni */
             $comunicazioniLimited = $comunicazioni->take(3);
             /** @var \Illuminate\Pagination\LengthAwarePaginator $eventi */
-            $eventiLimited = $eventi->take(10);
+            $eventiLimited = $eventi->take(3);
         
         } catch (\Exception $e) {
 

@@ -111,6 +111,18 @@ class EmissioneRateController extends Controller
                         ]);
                     }
 
+                    // 1. UPDATE EVENTI UTENTE: Segniamo la rata come EMESSA
+                    // Cerchiamo gli eventi dei condomini legati a questa rata
+                    $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                        ->where('meta->context->rata_id', $rata->id)
+                        ->get();
+
+                    foreach ($userEvents as $evt) {
+                        $meta = $evt->meta;
+                        $meta['is_emitted'] = true;
+                        $evt->update(['meta' => $meta]);
+                    }
+
                     // --- EVENTO AGGIUNTO ---
                     // Questo cancella il task "Emettere Rata" dal calendario Admin
                     RataEmessa::dispatch($rata);
@@ -180,6 +192,17 @@ class EmissioneRateController extends Controller
                     ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
 
+                // C. UPDATE EVENTI UTENTE: Segniamo la rata come NON EMESSA (Rollback)
+                $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                    ->where('meta->context->rata_id', $rata->id)
+                    ->get();
+
+                foreach ($userEvents as $evt) {
+                    $meta = $evt->meta;
+                    $meta['is_emitted'] = false; 
+                    $evt->update(['meta' => $meta]);
+                }
+
                 // B. RIPRISTINO TASK NELLA INBOX
                 
                 // Recupero categoria admin
@@ -220,7 +243,7 @@ class EmissioneRateController extends Controller
                             // 🛠️ FIX ROUTE PARAMETER USANDO IL TRAIT
                             'action_url'        => route('admin.gestionale.esercizi.piani-rate.show', [
                                 'condominio' => $condominio->id,
-                                'esercizio'  => $esercizio->id, // <--- Ecco l'ID corretto preso dal Trait
+                                'esercizio'  => $esercizio->id, 
                                 'pianoRate'  => $pianoRate->id
                             ])
                         ],
