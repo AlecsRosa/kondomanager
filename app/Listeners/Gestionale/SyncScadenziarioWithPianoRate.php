@@ -8,6 +8,7 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
+use App\Models\Gestionale\RataQuote;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
     public function handle(PianoRateStatusUpdated $event): void
     {
-        // 🔥 FIX QUI: Aggiunto ->value perché l'Enum non si converte in stringa da solo
         Log::info("Listener avviato per Piano Rate ID: {$event->pianoRate->id} - Stato: {$event->newStatus->value}");
 
         if ($event->newStatus === StatoPianoRate::APPROVATO) {
@@ -37,7 +37,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         $pianoRate->loadMissing('gestione');
         $nomeGestione = $pianoRate->gestione->nome ?? 'Gestione';
 
-        // Avwiamo la transazione
+        // Avviamo la transazione
         DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione) {
 
             $catAdmin = CategoriaEvento::firstOrCreate(
@@ -138,13 +138,14 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 if ($user->anagrafica_id) $eventoCheck->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
 
 
-                // --- 2. EVENTI CONDÒMINI ---
+                // --- 2. EVENTI CONDÒMINI (LOGICA SMART) ---
                 $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
 
                 foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
                     $anagrafica = $quote->first()->anagrafica;
                     if (!$anagrafica) continue;
 
+                    // Check esistenza
                     $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
                         ->whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereJsonContains('meta->type', 'scadenza_rata_condomino')
@@ -153,15 +154,47 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                     if ($esiste) continue;
 
-                    $importoVal = $quote->sum('importo');
+                    $importoVal = $quote->sum('importo'); 
+                    
+                    // Dettaglio quote
                     $dettaglioQuote = $quote->map(function($q) {
                         $immobile = $q->immobile;
                         $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
                         return ['descrizione' => $desc, 'importo' => $q->importo];
                     })->values()->toArray();
 
-                    $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale. Effettua il pagamento entro la data indicata per evitare solleciti.";
-                    if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
+                    // CALCOLO DEL SALDO PROGRESSIVO PER IL MESSAGGIO 
+                    $saldoPregresso = RataQuote::where('anagrafica_id', $anagraficaId)
+                        ->whereHas('rata', function($q) use ($rata, $pianoRate) {
+                            $q->where('piano_rate_id', $pianoRate->id)
+                              ->where('data_scadenza', '<', $rata->data_scadenza);
+                        })
+                        ->sum('importo');
+
+                    // Saldo virtuale alla data di questa rata
+                    $saldoAttuale = $saldoPregresso + $importoVal;
+
+                    // --- GENERAZIONE MESSAGGI DINAMICI ---
+                    if ($importoVal < 0) {
+                        // Rata 1 (Credito puro)
+                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore (es. avanzo esercizio precedente).\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
+                    
+                    } elseif ($saldoAttuale < -0.01) {
+                        // Rata 2 (Debito coperto dal credito pregresso)
+                        $descUser = "Gentile {$anagrafica->nome}, è in scadenza la rata n. {$rata->numero_rata}.\nGrazie al tuo credito pregresso, questa rata risulta attualmente COPERTA e non richiede alcun versamento.\nVerifica sempre il saldo aggiornato nella tua area riservata.";
+                    
+                    } else {
+                        // Rata 4 e 5 (Debito da pagare, totale o parziale)
+                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\nTi preghiamo di effettuare il pagamento entro la data indicata.";
+                        
+                        if ($saldoPregresso < -0.01) {
+                            $descUser .= "\n(Nota: Una parte dell'importo è stata compensata dal tuo credito residuo. Verifica l'importo esatto da versare nella dashboard).";
+                        }
+                    }
+
+                    if (!empty($rata->note)) {
+                        $descUser .= "\n\nNote: {$rata->note}";
+                    }
 
                     $eventoUser = Evento::create([
                         'title'       => "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
@@ -197,7 +230,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     $eventoUser->condomini()->attach($condominio->id);
                 }
             }
-        }); // Fine Transaction
+        }); 
 
         if ($user) {
             Cache::forget('inbox_count_' . $user->id);

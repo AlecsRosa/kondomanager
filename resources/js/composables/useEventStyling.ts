@@ -8,7 +8,9 @@ import {
     AlertTriangle,
     XCircle,
     CalendarDays,
-    Info 
+    Info,
+    Coins,
+    PieChart // Aggiungo questa per il parziale, opzionale
 } from 'lucide-vue-next';
 
 export function useEventStyling() {
@@ -33,12 +35,26 @@ export function useEventStyling() {
         const status = meta.status || 'pending';
         const requiresAction = meta.requires_action || false;
         
-        const isCredit = (meta.importo_restante || 0) < 0;
+        // Dati Finanziari
+        const importoTotale = Math.abs(Number(meta.totale_rata || meta.importo_originale || 0));
+        const residuo = Number(meta.importo_restante || 0);
+        const pagatoCash = Number(meta.importo_pagato || 0);
+
+        // Flag Logici
+        const isCreditSource = residuo < 0; // Rata 1
+        const isFullyCovered = meta.is_covered_by_credit === true; // Rata 2
         
+        // Rata 4: Non è fonte, non è full, c'è un residuo minore del totale, e non ho pagato cash
+        const isPartiallyCoveredByCredit = !isCreditSource && 
+                                           !isFullyCovered && 
+                                           residuo > 0 && 
+                                           residuo < importoTotale && 
+                                           pagatoCash === 0;
+
         const dataRiferimento = evento.start_time || evento.occurs || evento.occurs_at;
         const days = getDaysRemaining(dataRiferimento);
 
-        // --- 1. PRIORITÀ AL TIPO ADMIN (Emissione Rata) ---
+        // --- 1. ADMIN (Emissione / Controllo) ---
         if (type === 'emissione_rata') {
             if (days <= 0) {
                 return {
@@ -49,7 +65,6 @@ export function useEventStyling() {
                     label: 'Scaduto e da emettere'
                 };
             }
-            
             return {
                 color: 'text-blue-600 dark:text-blue-400',
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
@@ -59,20 +74,16 @@ export function useEventStyling() {
             };
         }
 
-        // --- 2. NUOVO BLOCCO: CONTROLLO INCASSI (Admin) ---
         if (type === 'controllo_incassi') {
-            // Se sono passati giorni dalla data prevista per il controllo
             if (days < 0) {
                 return {
                     color: 'text-red-700 dark:text-red-500 font-bold',
                     bgColor: 'bg-red-50 dark:bg-red-900/20',
                     borderColor: 'border-red-200 dark:border-red-800',
                     icon: AlertCircle,
-                    label: 'Verifica urgente incassi'
+                    label: 'Verifica urgente'
                 };
             }
-            
-            // VIOLA + FRECCIA IN ENTRATA
             return {
                 color: 'text-purple-600 dark:text-purple-400', 
                 bgColor: 'bg-purple-50 dark:bg-purple-900/20',
@@ -82,20 +93,18 @@ export function useEventStyling() {
             };
         }
 
-        // --- 3. PRIORITÀ ALLO STATO (User - Scadenza Rata Condomino) ---
+        // --- 2. USER: STATI DEFINITIVI ---
         
-        // RIFIUTATO
         if (status === 'rejected') {
             return {
                 color: 'text-red-600 dark:text-red-400 font-bold',
                 bgColor: 'bg-red-50 dark:bg-red-900/20',
                 borderColor: 'border-red-200 dark:border-red-800',
                 icon: XCircle,
-                label: 'Pagamento rifiutato'
+                label: 'Rifiutato'
             };
         }
 
-        // PAGATO (Verde)
         if (status === 'paid') {
             return {
                 color: 'text-emerald-600 dark:text-emerald-400',
@@ -106,29 +115,55 @@ export function useEventStyling() {
             };
         }
 
-        // PARZIALE (Arancione)
-        if (status === 'partial') {
+        // --- 3. USER: LOGICA WATERFALL (Credito) ---
+
+        // CASO: Completamente Coperta (Verde)
+        if (isFullyCovered) {
             return {
-                color: 'text-orange-600 dark:text-orange-400',
-                bgColor: 'bg-orange-50 dark:bg-orange-900/20',
-                borderColor: 'border-orange-200 dark:border-orange-800',
-                icon: ClockArrowUp, 
-                label: 'Pagato parzialmente'
+                color: 'text-emerald-700 dark:text-emerald-400 font-medium',
+                bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
+                borderColor: 'border-emerald-200 dark:border-emerald-800',
+                icon: Coins,
+                label: 'Coperta'
             };
         }
-        
-        // A CREDITO
-        if (isCredit) {
+
+        // CASO C: Parzialmente Coperta dal Credito (Viola/Indigo)
+        // Usiamo Indigo per distinguerlo nettamente dal Ciano/Blu (Credito) 
+        // e dall'Arancione (Pagamento Parziale manuale).
+        if (isPartiallyCoveredByCredit) {
             return {
-                color: 'text-blue-600 dark:text-blue-400',
+                color: 'text-indigo-700 dark:text-indigo-400 font-medium',
+                bgColor: 'bg-indigo-50 dark:bg-indigo-900/20',
+                borderColor: 'border-indigo-200 dark:border-indigo-800',
+                icon: PieChart, 
+                label: 'Parz. coperta'
+            };
+        }
+
+        // CASO: Fonte di Credito (Blu)
+        if (isCreditSource) {
+            return {
+                color: 'text-blue-600 dark:text-blue-400 font-bold',
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
                 borderColor: 'border-blue-200 dark:border-blue-800',
                 icon: Info,
                 label: 'A credito'
             };
         }
+
+        // --- 4. USER: ALTRI STATI ---
+
+        if (status === 'partial') { // Parziale pagato CASH
+            return {
+                color: 'text-orange-600 dark:text-orange-400',
+                bgColor: 'bg-orange-50 dark:bg-orange-900/20',
+                borderColor: 'border-orange-200 dark:border-orange-800',
+                icon: ClockArrowUp, 
+                label: 'Pagato parz.'
+            };
+        }
         
-        // IN VERIFICA
         if (status === 'reported' || requiresAction) {
             return {
                 color: 'text-amber-600 dark:text-amber-400',
@@ -139,7 +174,7 @@ export function useEventStyling() {
             };
         }
         
-        // --- 4. URGENZA GENERICA ---
+        // --- 5. URGENZA GENERICA (Scadenze pure) ---
         if (days < 0) {
             return {
                 color: 'text-red-700 dark:text-red-500 font-bold',
@@ -154,7 +189,7 @@ export function useEventStyling() {
                 bgColor: 'bg-red-50 dark:bg-red-900/20',
                 borderColor: 'border-red-200 dark:border-red-800',
                 icon: ClockAlert,
-                label: `Scade tra ${days} giorni`
+                label: `Scade tra ${days} gg`
             };
         } else if (days <= 14) {
             return {
@@ -162,13 +197,13 @@ export function useEventStyling() {
                 bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
                 borderColor: 'border-yellow-200 dark:border-yellow-800',
                 icon: ClockArrowUp,
-                label: `Scade tra ${days} giorni`
+                label: `Scade tra ${days} gg`
             };
         } else {
             return {
-                color: 'text-blue-600 dark:text-blue-400', 
-                bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-                borderColor: 'border-blue-200 dark:border-blue-800',
+                color: 'text-slate-600 dark:text-slate-400', 
+                bgColor: 'bg-slate-50 dark:bg-slate-900/20',
+                borderColor: 'border-slate-200 dark:border-slate-800',
                 icon: CalendarDays,
                 label: `Tra ${days} giorni`
             };

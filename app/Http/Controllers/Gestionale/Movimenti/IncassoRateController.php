@@ -100,7 +100,7 @@ class IncassoRateController extends Controller
 
         if (!empty($quoteIds) && $paganteId) {
             
-            // 🔥 FIX FONDAMENTALE: Convertiamo ID Quote -> ID Rate (Padri)
+            // FIX FONDAMENTALE: Convertiamo ID Quote -> ID Rate (Padri)
             // L'evento è legato alla Rata generale, non alla singola quota
             $rataIdsReali = RataQuote::whereIn('id', $quoteIds)
                 ->pluck('rata_id')
