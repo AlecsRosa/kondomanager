@@ -6,12 +6,24 @@ import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+// 🔥 COMPOSABLES
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { useDateConverter } from '@/composables/useDateConverter';
+
+// ICONE
 import { 
   ArrowLeft, Printer, Mail, Wallet, 
   ArrowDownCircle, ArrowUpCircle, Building2, Landmark,
-  FileText, Banknote, HelpCircle, // Icone Azioni
-  CheckCircle2, AlertCircle, PieChart, Coins // Icone Stati
+  FileText, Banknote, HelpCircle, 
+  CheckCircle2, AlertCircle, PieChart, Coins, Info 
 } from 'lucide-vue-next';
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from '@/components/ui/tooltip';
+
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -31,27 +43,15 @@ const props = defineProps<{
   };
 }>();
 
+// CONFIGURAZIONE FORMATTAZIONE
+// fromCents: false perché dividiamo manualmente per 100 nel template per sicurezza assoluta
+const { euro } = useCurrencyFormatter({ fromCents: false }); 
+const { toItalian } = useDateConverter();
 const { generatePath } = usePermission();
 
 const goBack = () => {
     if (window.history.length > 1) window.history.back();
     else router.visit(generatePath('gestionale/:condominio/piani-rate', { condominio: props.condominio.id }));
-};
-
-const formatMoney = (cents: number, allowZero: boolean = false) => {
-    if (cents === 0 && !allowZero) return '-';
-    return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(cents / 100);
-};
-
-// NUOVA FUNZIONE PER FORMATTARE LA DATA (GG/MM)
-const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    // Aggiunto year: 'numeric' per ottenere gg/mm/aaaa
-    return new Date(dateString).toLocaleDateString('it-IT', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric' 
-    });
 };
 
 const formatIndirizzoImmobile = (immobile: any) => {
@@ -66,7 +66,6 @@ const breadcrumbs = computed(() => [
   { title: `EC: ${props.anagrafica.nome}`, href: '#' },
 ]);
 
-// Helper Colori Saldi
 const saldoColorClass = computed(() => {
     if (props.stats.saldo_raw > 0) return 'text-red-600';
     if (props.stats.saldo_raw < 0) return 'text-emerald-600';
@@ -79,20 +78,20 @@ const saldoInizialeColorClass = computed(() => {
     return 'text-gray-600';
 });
 
-// Helper Configurazione Stati (Icona + Colori)
 const getStatoConfig = (stato: string) => {
     switch(stato) {
-        case 'pagata': 
-            return { label: 'SALDATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
-        case 'parzialmente_pagata': 
-            return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
-        case 'da_pagare': 
-            return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
-        case 'credito': 
-            return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: Coins };
-        default: 
-            return { label: '', class: '', icon: null };
+        case 'pagata': return { label: 'SALDATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
+        case 'parzialmente_pagata': return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
+        case 'da_pagare': return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
+        case 'credito': return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: Coins };
+        default: return { label: '', class: '', icon: null };
     }
+};
+
+const getImportoStyle = (riga: any) => {
+    const isCredito = riga.dettagli?.some((d: any) => d.type === 'rata' && d.status === 'credito');
+    if (isCredito) return 'text-blue-600 font-bold';
+    return 'text-red-600 font-medium';
 };
 </script>
 
@@ -120,65 +119,60 @@ const getStatoConfig = (stato: string) => {
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
             <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                <Card class="bg-gray-50/50 shadow-sm border-gray-200">
-                    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-1 p-4">
-                        <CardTitle class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Saldo iniziale</CardTitle>
+                <div class="rounded-lg border bg-gray-50/50 shadow-sm border-gray-200">
+                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Saldo iniziale</h3>
                         <Landmark class="h-4 w-4 text-gray-400" />
-                    </CardHeader>
-                    <CardContent class="p-4 pt-0">
+                    </div>
+                    <div class="p-4 pt-0">
                         <div class="text-xl font-bold" :class="saldoInizialeColorClass">{{ stats.saldo_iniziale }}</div>
                         <p class="text-[10px] uppercase font-bold mt-1 tracking-wide" :class="saldoInizialeColorClass">
                             {{ stats.saldo_iniziale_raw > 0 ? 'A DEBITO' : (stats.saldo_iniziale_raw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
                         </p>
-                    </CardContent>
-                </Card>
-
-                <Card class="shadow-sm border-gray-200">
-                    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-1 p-4">
-                        <CardTitle class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale addebiti</CardTitle>
+                    </div>
+                </div>
+                <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200">
+                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale addebiti</h3>
                         <ArrowDownCircle class="h-4 w-4 text-red-500" />
-                    </CardHeader>
-                    <CardContent class="p-4 pt-0">
+                    </div>
+                    <div class="p-4 pt-0">
                         <div class="text-xl font-bold text-gray-900">{{ stats.totale_addebiti }}</div>
                         <p class="text-[10px] text-muted-foreground mt-1">Rate emesse</p>
-                    </CardContent>
-                </Card>
-
-                <Card class="shadow-sm border-gray-200">
-                    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-1 p-4">
-                        <CardTitle class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale Versato</CardTitle>
+                    </div>
+                </div>
+                <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200">
+                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale Versato</h3>
                         <ArrowUpCircle class="h-4 w-4 text-emerald-500" />
-                    </CardHeader>
-                    <CardContent class="p-4 pt-0">
+                    </div>
+                    <div class="p-4 pt-0">
                         <div class="text-xl font-bold text-emerald-600">{{ stats.totale_versamenti }}</div>
                         <p class="text-[10px] text-muted-foreground mt-1">Incassi registrati</p>
-                    </CardContent>
-                </Card>
-
-                <Card class="shadow-sm" :class="{'bg-red-50 border-red-200': stats.saldo_raw > 0, 'bg-emerald-50 border-emerald-200': stats.saldo_raw < 0, 'bg-white border-gray-200': stats.saldo_raw === 0}">
-                    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-1 p-4">
-                        <CardTitle class="text-xs font-medium uppercase tracking-wider" :class="stats.saldo_raw > 0 ? 'text-red-500' : 'text-emerald-500'">Saldo Finale</CardTitle>
+                    </div>
+                </div>
+                <div class="rounded-lg border shadow-sm border-gray-200" :class="{'bg-red-50 border-red-200': stats.saldo_raw > 0, 'bg-emerald-50 border-emerald-200': stats.saldo_raw < 0, 'bg-white': stats.saldo_raw === 0}">
+                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <h3 class="text-xs font-medium uppercase tracking-wider" :class="stats.saldo_raw > 0 ? 'text-red-500' : 'text-emerald-500'">Saldo Finale</h3>
                         <Wallet class="h-4 w-4" :class="stats.saldo_raw > 0 ? 'text-red-500' : 'text-emerald-500'" />
-                    </CardHeader>
-                    <CardContent class="p-4 pt-0">
+                    </div>
+                    <div class="p-4 pt-0">
                         <div class="text-2xl font-bold" :class="saldoColorClass">{{ stats.saldo_finale }}</div>
                         <p class="text-[10px] uppercase font-bold mt-1 tracking-wide" :class="stats.saldo_raw > 0 ? 'text-red-600' : 'text-emerald-600'">
                             {{ stats.saldo_raw > 0 ? 'DA VERSARE' : (stats.saldo_raw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
                         </p>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
             </div>
-
             <div class="lg:col-span-4 flex flex-col h-full">
-                <Card class="h-full flex flex-col shadow-sm border-gray-200">
-                    <CardHeader class="p-4 pb-2 border-b bg-gray-50/50">
-                        <CardTitle class="text-sm font-semibold flex items-center gap-2">
+                <div class="rounded-lg border bg-card text-card-foreground h-full flex flex-col shadow-sm border-gray-200">
+                    <div class="flex flex-col gap-y-1.5 p-4 pb-2 border-b bg-gray-50/50">
+                        <h3 class="tracking-tight text-sm font-semibold flex items-center gap-2">
                             <Building2 class="w-4 h-4 text-gray-500" /> Unità immobiliari
                             <Badge variant="secondary" class="ml-auto text-[10px] h-5">{{ anagrafica.immobili.length }}</Badge>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent class="p-0 flex-1 overflow-hidden">
+                        </h3>
+                    </div>
+                    <div class="p-0 flex-1 overflow-hidden">
                         <div class="overflow-y-auto p-4 space-y-4 max-h-[280px]"> 
                             <div v-for="immobile in anagrafica.immobili" :key="immobile.id" class="flex items-start space-x-3 pb-3 border-b last:border-0 last:pb-0">
                                 <div class="bg-primary/10 p-1.5 rounded-md mt-0.5 shrink-0"><Building2 class="w-3.5 h-3.5 text-primary" /></div>
@@ -192,52 +186,30 @@ const getStatoConfig = (stato: string) => {
                             </div>
                             <div v-if="anagrafica.immobili.length === 0" class="text-center py-8 text-muted-foreground text-xs italic">Nessuna unità associata.</div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200">
+        <div class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200 mb-6">
             <span class="font-bold uppercase tracking-wider text-[10px] text-gray-400 mr-1">Legenda:</span>
-            
-            <div class="flex items-center gap-1.5" title="Riga Emissione">
-                <div class="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 shadow-sm">
-                    <FileText class="w-3 h-3" />
-                </div>
-                <span>Emissione</span>
-            </div>
-            
-            <div class="flex items-center gap-1.5" title="Riga Incasso">
-                <div class="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
-                    <Banknote class="w-3 h-3" />
-                </div>
-                <span>Incasso</span>
-            </div>
-
+            <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 shadow-sm"><FileText class="w-3 h-3" /></div><span>Emissione</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm"><Banknote class="w-3 h-3" /></div><span>Incasso</span></div>
             <div class="h-4 w-px bg-gray-300 mx-2 hidden sm:block"></div>
-
-            <div class="flex items-center gap-1.5">
-                <CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-                <PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-                <AlertCircle class="w-3.5 h-3.5 text-red-600" /> <span class="text-red-700 font-medium">Non Pagata</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-                <Coins class="w-3.5 h-3.5 text-blue-600" /> <span class="text-blue-700 font-medium">Credito</span>
-            </div>
+            <div class="flex items-center gap-1.5"><CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span></div>
+            <div class="flex items-center gap-1.5"><PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span></div>
+            <div class="flex items-center gap-1.5"><AlertCircle class="w-3.5 h-3.5 text-red-600" /> <span class="text-red-700 font-medium">Non Pagata</span></div>
+            <div class="flex items-center gap-1.5"><Coins class="w-3.5 h-3.5 text-blue-600" /> <span class="text-blue-700 font-medium">Credito</span></div>
         </div>
 
-        <Card class="shadow-sm border-gray-200">
-            <CardHeader class="p-4 pb-3 border-b bg-gray-50/30">
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200">
+            <div class="flex flex-col gap-y-1.5 p-4 pb-3 border-b bg-gray-50/30">
                 <div class="flex items-center justify-between">
-                    <CardTitle class="text-base font-semibold">Movimenti contabili</CardTitle>
+                    <h3 class="tracking-tight text-base font-semibold">Movimenti contabili</h3>
                     <div class="text-xs text-muted-foreground">{{ esercizio.nome }}</div>
                 </div>
-            </CardHeader>
-            <CardContent class="p-0">
+            </div>
+            <div class="p-0">
                 <div class="relative w-full overflow-auto">
                     <table class="w-full text-sm text-left">
                         <thead class="text-xs text-gray-500 uppercase bg-gray-50/50 border-b">
@@ -254,15 +226,9 @@ const getStatoConfig = (stato: string) => {
                             
                             <tr class="bg-yellow-50/30">
                                 <td class="px-4 py-4 text-center">
-                                    <div class="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center mx-auto text-yellow-600 shadow-sm border border-yellow-200">
-                                        <Landmark class="w-4 h-4" />
-                                    </div>
+                                    <div class="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center mx-auto text-yellow-600 shadow-sm border border-yellow-200"><Landmark class="w-4 h-4" /></div>
                                 </td>
-                                
-                                <td class="px-4 py-4 text-sm font-medium text-gray-700">
-                                    {{ formatDate(esercizio.data_inizio) }}
-                                </td>
-
+                                <td class="px-4 py-4 text-sm font-medium text-gray-700">{{ toItalian(esercizio.data_inizio) }}</td>
                                 <td class="px-4 py-4 font-semibold text-gray-800 text-sm">Saldo iniziale esercizio</td>
                                 <td class="px-4 py-4 text-right text-gray-300">-</td>
                                 <td class="px-4 py-4 text-right text-gray-300">-</td>
@@ -274,90 +240,119 @@ const getStatoConfig = (stato: string) => {
                             </tr>
 
                             <tr v-for="riga in timeline" :key="riga.id" class="hover:bg-gray-50 transition-colors group">
-                                
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex justify-center mt-1">
-                                        
-                                        <div v-if="riga.tipo_icona === 'bill'" class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-500 border border-gray-200 shadow-sm">
-                                            <FileText class="w-4 h-4" />
-                                        </div>
-                                        
-                                        <div v-else-if="riga.tipo_icona === 'payment'" class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 border border-emerald-200 shadow-sm">
-                                            <Banknote class="w-4 h-4" />
-                                        </div>
-                                        
-                                        <div v-else-if="riga.tipo_icona === 'landmark'" class="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 border border-yellow-200 shadow-sm">
-                                            <Landmark class="w-4 h-4" />
-                                        </div>
-                                        
-                                        <div v-else class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 border border-blue-100 shadow-sm">
-                                            <HelpCircle class="w-4 h-4" />
-                                        </div>
+                                        <div v-if="riga.tipo_icona === 'bill'" class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-500 border border-gray-200 shadow-sm"><FileText class="w-4 h-4" /></div>
+                                        <div v-else-if="riga.tipo_icona === 'payment'" class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 border border-emerald-200 shadow-sm"><Banknote class="w-4 h-4" /></div>
+                                        <div v-else-if="riga.tipo_icona === 'landmark'" class="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 border border-yellow-200 shadow-sm"><Landmark class="w-4 h-4" /></div>
+                                        <div v-else class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 border border-blue-100 shadow-sm"><HelpCircle class="w-4 h-4" /></div>
                                     </div>
                                 </td>
-
                                 <td class="px-4 py-3 align-top">
                                     <div class="text-sm font-medium text-gray-700">{{ riga.data }}</div>
-                                    <div v-if="riga.protocollo" class="mt-1">
-                                        <Badge variant="outline" class="text-[9px] px-1 h-4 font-mono text-gray-400 border-gray-200">{{ riga.protocollo }}</Badge>
-                                    </div>
+                                    <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-[9px] px-1 h-4 font-mono text-gray-400 border-gray-200">{{ riga.protocollo }}</Badge></div>
                                 </td>
-
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex items-center gap-2 mb-1">
                                         <span class="font-semibold text-gray-800 text-sm">{{ riga.descrizione }}</span>
                                         <Badge v-if="riga.gestione" variant="secondary" class="text-[9px] h-4 px-1.5 bg-gray-100 text-gray-500 font-normal">{{ riga.gestione }}</Badge>
                                     </div>
-                                    
                                     <p v-if="riga.note" class="text-xs text-blue-600 italic mb-1">Note: {{ riga.note }}</p>
-                                    
                                     <div v-if="riga.dettagli && riga.dettagli.length > 0" class="flex flex-col gap-1 mt-1">
                                         <div v-for="(item, index) in riga.dettagli" :key="index" class="flex items-center flex-wrap gap-2">
-                                            
                                             <span class="text-[11px] text-gray-500 flex items-center gap-1.5">
-                                                <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span> 
-                                                {{ item.text }}
+                                                <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span> {{ item.text }}
                                             </span>
-
-                                            <span v-if="item.status" 
-                                                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider"
-                                                  :class="getStatoConfig(item.status).class">
-                                                
+                                            <span v-if="item.status" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status).class">
                                                 <component :is="getStatoConfig(item.status).icon" class="w-3 h-3" />
-                                                {{ getStatoConfig(item.status).label }}
+                                                <span v-if="item.status === 'credito'">COPERTA DA CREDITO</span>
+                                                <span v-else>{{ getStatoConfig(item.status).label }}</span>
                                             </span>
-
                                         </div>
                                     </div>
                                 </td>
-
+                                
                                 <td class="px-4 py-3 text-right align-top">
-                                    <span v-if="riga.dare > 0" class="text-red-600 font-medium">{{ formatMoney(riga.dare) }}</span>
+                                    <div v-if="riga.dare > 0" class="flex items-center justify-end gap-1.5">
+                                        <span :class="getImportoStyle(riga)">{{ euro(riga.dare / 100) }}</span>
+                                        
+                                       <TooltipProvider v-if="riga.breakdown" :delayDuration="0">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <div class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-600 transition-colors cursor-help shadow-sm border border-blue-100">
+                                                        <Info class="w-3 h-3" />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-xl rounded-lg z-50">
+                                                    
+                                                    <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 flex justify-between">
+                                                        <span>
+                                                            {{ riga.breakdown.start < 0 ? 'Utilizzo Credito' : 'Aumento Debito' }}
+                                                            (Int. {{ riga.breakdown.immobile }})
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="space-y-2 text-xs">
+                                                        <div class="flex justify-between items-center text-slate-400">
+                                                            <span class="flex items-center gap-1">
+                                                                <div class="w-1.5 h-1.5 rounded-full" :class="riga.breakdown.start < 0 ? 'bg-emerald-500' : (riga.breakdown.start > 0 ? 'bg-red-500' : 'bg-gray-500')"></div>
+                                                                
+                                                                <span v-if="riga.breakdown.start < 0">Credito Disponibile:</span>
+                                                                <span v-else-if="riga.breakdown.start > 0">Debito Pregresso:</span>
+                                                                <span v-else>Saldo Zero:</span>
+                                                            </span>
+                                                            <span class="font-mono">{{ euro(riga.breakdown.start) }}</span>
+                                                        </div>
+
+                                                        <div class="flex justify-between items-center text-white">
+                                                            <span class="pl-2.5">Quota Rata:</span>
+                                                            <span class="font-mono font-bold">+ {{ euro(riga.breakdown.cost) }}</span>
+                                                        </div>
+
+                                                        <div class="border-t border-slate-700 my-2 pt-2">
+                                                            <div class="flex justify-between items-center font-bold text-sm">
+                                                                <span class="text-white">Nuovo Saldo Progressivo:</span>
+                                                                <span class="font-mono" :class="riga.breakdown.end < 0 ? 'text-emerald-400' : (riga.breakdown.end > 0 ? 'text-red-400' : 'text-white')">
+                                                                    {{ euro(riga.breakdown.end) }}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            <div v-if="riga.breakdown.end < 0" class="text-[10px] text-emerald-500 text-right mt-1 font-normal italic">
+                                                                (Sei ancora a credito)
+                                                            </div>
+                                                            <div v-else-if="riga.breakdown.start < 0 && riga.breakdown.end >= 0" class="text-[10px] text-amber-400 text-right mt-1 font-normal italic">
+                                                                (Il credito è stato esaurito)
+                                                            </div>
+                                                            <div v-else-if="riga.breakdown.end > 0" class="text-[10px] text-red-400 text-right mt-1 font-normal italic">
+                                                                (Totale da saldare)
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
                                     <span v-else class="text-gray-200 text-xs">-</span>
                                 </td>
 
                                 <td class="px-4 py-3 text-right align-top">
-                                    <span v-if="riga.avere > 0" class="text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{{ formatMoney(riga.avere) }}</span>
+                                    <span v-if="riga.avere > 0" class="text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{{ euro(riga.avere / 100) }}</span>
                                     <span v-else class="text-gray-200 text-xs">-</span>
                                 </td>
-
+                                
                                 <td class="px-4 py-3 text-right align-top bg-gray-50/30 group-hover:bg-gray-100/50 border-l border-gray-100">
-                                    <span class="font-mono font-bold text-sm" :class="riga.saldo > 0 ? 'text-red-600' : (riga.saldo < 0 ? 'text-emerald-600' : 'text-gray-400')">
-                                        {{ formatMoney(riga.saldo, true) }}
-                                    </span>
+                                    <span class="font-mono font-bold text-sm" :class="riga.saldo > 0 ? 'text-red-600' : (riga.saldo < 0 ? 'text-emerald-600' : 'text-gray-400')">{{ euro(riga.saldo / 100) }}</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-            </CardContent>
-        </Card>
-
+            </div>
+        </div>
     </GestionaleLayout>
 </template>
 
 <style scoped>
-/* Scrollbar */
 .overflow-y-auto::-webkit-scrollbar { width: 4px; }
 .overflow-y-auto::-webkit-scrollbar-track { background: transparent; }
 .overflow-y-auto::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
