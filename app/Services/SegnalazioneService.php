@@ -15,21 +15,23 @@ use Illuminate\Support\Facades\Log;
 class SegnalazioneService
 {
     /**
-     * Get paginated segnalazioni depending on user role.
+     * Get paginated or limited segnalazioni depending on user role.
      *
      * @param Anagrafica|null $anagrafica
      * @param Collection|null $condominioIds
      * @param array $validated
-     * @return LengthAwarePaginator
+     * @param int|null $limit  <-- NUOVO PARAMETRO
+     * @return LengthAwarePaginator|Collection
      */
     public function getSegnalazioni(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
-        array $validated = []
-    ): LengthAwarePaginator {
+        array $validated = [],
+        ?int $limit = null // <-- AGGIUNTO QUI
+    ): LengthAwarePaginator|Collection {
         return $this->isAdmin()
-            ? $this->getScopedQuery(null, null, $validated, true)
-            : $this->getScopedQuery($anagrafica, $condominioIds, $validated, false);
+            ? $this->getScopedQuery(null, null, $validated, true, $limit)
+            : $this->getScopedQuery($anagrafica, $condominioIds, $validated, false, $limit);
     }
 
     /**
@@ -39,16 +41,23 @@ class SegnalazioneService
      * @param Collection|null $condominioIds
      * @param array $validated
      * @param bool $isAdmin
-     * @return LengthAwarePaginator
+     * @param int|null $limit <-- NUOVO PARAMETRO
+     * @return LengthAwarePaginator|Collection
      */
-    private function getScopedQuery(?Anagrafica $anagrafica, ?Collection $condominioIds, array $validated, bool $isAdmin): LengthAwarePaginator
+    private function getScopedQuery(
+        ?Anagrafica $anagrafica, 
+        ?Collection $condominioIds, 
+        array $validated, 
+        bool $isAdmin,
+        ?int $limit = null
+    ): LengthAwarePaginator|Collection
     {
         $query = $isAdmin 
             ? $this->buildAdminBaseQuery()
             : $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
 
-        return $query
-            ->when($validated['search'] ?? false, fn($q, $search) =>
+        // Applichiamo i filtri
+        $query->when($validated['search'] ?? false, fn($q, $search) =>
                 $q->where('subject', 'like', "%{$search}%")
             )
             ->when($validated['subject'] ?? false, fn($q, $subject) =>
@@ -60,17 +69,22 @@ class SegnalazioneService
             ->when($validated['stato'] ?? false, fn($q, $stati) =>
                 $q->whereIn('stato', $stati)
             )
-            ->orderBy('created_at', 'desc')
+            ->orderBy('created_at', 'desc');
+
+        // --- LOGICA DI OTTIMIZZAZIONE ---
+        if ($limit) {
+            // Se c'è un limite (es. Dashboard), prendiamo solo N record e restituiamo una Collection
+            return $query->take($limit)->get();
+        }
+
+        // Altrimenti restituiamo il Paginator standard
+        return $query
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
 
     /**
      * Build base query for a regular user based on their anagrafica and condomini.
-     *
-     * @param Anagrafica|null $anagrafica
-     * @param Collection|null $condominioIds
-     * @return Builder
      */
     private function buildUserScopedBaseQuery(?Anagrafica $anagrafica, ?Collection $condominioIds): Builder
     {
@@ -96,8 +110,6 @@ class SegnalazioneService
 
     /**
      * Build base query for admin users.
-     *
-     * @return Builder
      */
     private function buildAdminBaseQuery(): Builder
     {
@@ -106,8 +118,6 @@ class SegnalazioneService
 
     /**
      * Get statistics for segnalazioni based on user role.
-     *
-     * @return object
      */
     public function getSegnalazioniStats(): object
     {
@@ -123,12 +133,6 @@ class SegnalazioneService
         return $this->buildStatsQuery($query);
     }
 
-    /**
-     * Build aggregated stats for segnalazioni priorities.
-     *
-     * @param Builder $query
-     * @return object
-     */
     private function buildStatsQuery(Builder $query): object
     {
         return $query->selectRaw("
@@ -139,11 +143,6 @@ class SegnalazioneService
         ")->first();
     }
 
-    /**
-     * Check if the current user is an administrator or collaborator.
-     *
-     * @return bool
-     */
     private function isAdmin(): bool
     {
         $user = Auth::user();

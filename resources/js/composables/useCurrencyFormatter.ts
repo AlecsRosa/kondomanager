@@ -1,12 +1,17 @@
+// composables/useCurrencyFormatter.ts
+
 interface EuroFormatOptions {
   locale?: string;
   minimumFractionDigits?: number;
   maximumFractionDigits?: number;
   spacing?: "normal" | "none" | "nbsp";
-  negativeStyle?: "after-symbol" | "before-symbol";
   
-  // ✨ NUOVA OPZIONE: Default true (comportamento attuale)
-  fromCents?: boolean; 
+  // Opzioni Logiche
+  fromCents?: boolean; // Default true (divide per 100)
+  
+  // ✨ NUOVE OPZIONI VISIVE
+  forcePlus?: boolean; // Se true, mostra "+" per i positivi (es. "€ + 10,00")
+  showSpaceAfterSign?: boolean; // Spazio tra segno e numero
 }
 
 export const useCurrencyFormatter = (globalOptions: EuroFormatOptions = {}) => {
@@ -15,45 +20,44 @@ export const useCurrencyFormatter = (globalOptions: EuroFormatOptions = {}) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
     spacing: "normal",
-    negativeStyle: "after-symbol",
-    fromCents: true, // Di default assume che siano centesimi (RETROCOMPATIBILE)
+    fromCents: true,
+    forcePlus: false,
+    showSpaceAfterSign: true,
     ...globalOptions,
   };
 
-  /**
-   * FORMAT: accetta importo → restituisce stringa (€ 00,00)
-   */
   const format = (amount: number | null | undefined, opts: EuroFormatOptions = {}): string => {
-    // Gestione sicurezza null/undefined
     if (amount === undefined || amount === null) return '-';
 
     const config = { ...baseConfig, ...opts };
 
-    // LOGICA INTELLIGENTE: Dividiamo solo se fromCents è true
-    const value = config.fromCents 
-        ? Math.abs(amount) / 100 
-        : Math.abs(amount);
+    // Calcolo valore reale
+    const rawValue = config.fromCents ? amount / 100 : amount;
+    const absValue = Math.abs(rawValue);
 
-    const number = new Intl.NumberFormat(config.locale, {
+    // Formattazione numero puro
+    const numberString = new Intl.NumberFormat(config.locale, {
       minimumFractionDigits: config.minimumFractionDigits,
       maximumFractionDigits: config.maximumFractionDigits,
-    }).format(value);
+    }).format(absValue);
 
-    // Tipo di spazio
-    const space =
-      config.spacing === "none" ? "" : config.spacing === "nbsp" ? "\u00A0" : " ";
+    // Gestione Spazi
+    const symbolSpace = config.spacing === "none" ? "" : config.spacing === "nbsp" ? "\u00A0" : " ";
+    const signSpace = config.showSpaceAfterSign ? " " : "";
 
-    // Negativi personalizzati
-    if (amount < 0) {
-      if (config.negativeStyle === "after-symbol") {
-        return `€${space}-${number}`;
-      } else {
-        return `-${space}€${space}${number}`.trim();
-      }
+    // Determinazione Segno
+    let sign = "";
+    if (rawValue < 0) {
+      sign = "-";
+    } else if (rawValue > 0 && config.forcePlus) {
+      sign = "+";
     }
+    // Nota: se è 0, nessun segno
 
-    // Positivi
-    return `€${space}${number}`;
+    // Costruzione stringa: [€] [spazio] [segno] [spazio] [numero]
+    const signPart = sign ? `${sign}${signSpace}` : "";
+
+    return `€${symbolSpace}${signPart}${numberString}`;
   };
 
   return {

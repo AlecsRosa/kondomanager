@@ -360,17 +360,17 @@ const parseResiduoQuota = (val: any) => {
 
                                                                             <div class="flex justify-between items-center pl-2 mb-1 text-white">
                                                                                 <span class="pl-2.5">Quota Rata:</span>
-                                                                                <span class="font-mono font-bold">+ {{ euro(dett.waterfall_cost) }}</span>
+                                                                                <span class="font-mono font-bold">+ {{ euro(dett.waterfall_cost ?? 0) }}</span>
                                                                             </div>
 
                                                                             <div class="flex justify-between items-center pl-2 pt-1 border-t border-slate-800">
                                                                                 <span class="text-[10px] text-slate-500 font-bold uppercase">Nuovo Saldo:</span>
-                                                                                <span class="font-mono font-bold" :class="dett.waterfall_end < 0 ? 'text-emerald-500' : 'text-white'">
-                                                                                    {{ euro(dett.waterfall_end) }}
+                                                                                <span class="font-mono font-bold" :class="(dett.waterfall_end ?? 0) < 0 ? 'text-emerald-500' : 'text-white'">
+                                                                                    {{ euro(dett.waterfall_end ?? 0) }}
                                                                                 </span>
                                                                             </div>
                                                                             
-                                                                            <div v-if="dett.waterfall_end < 0" class="text-right text-[9px] text-emerald-500 italic mt-0.5 pr-1">
+                                                                            <div v-if="(dett.waterfall_end ?? 0) < 0" class="text-right text-[9px] text-emerald-500 italic mt-0.5 pr-1">
                                                                                 (Sei ancora a credito)
                                                                             </div>
                                                                         </div>

@@ -15,13 +15,12 @@ use App\Services\SegnalazioneService;
 use App\Services\ComunicazioneService;
 use App\Services\DocumentoService;
 use App\Services\RecurrenceService;
-use Illuminate\Support\Facades\App;
 use Inertia\Response;
-use App\Traits\CalculatesFinancialWaterfall; // <--- TRAIT
+use App\Traits\CalculatesFinancialWaterfall;
 
 class UserDashboardController extends Controller
 {
-    use CalculatesFinancialWaterfall; // <--- TRAIT
+    use CalculatesFinancialWaterfall; 
     
     public function __construct(
         private SegnalazioneService $segnalazioneService,
@@ -45,13 +44,15 @@ class UserDashboardController extends Controller
             $segnalazioni = $this->segnalazioneService->getSegnalazioni(
                 anagrafica: $anagrafica,
                 condominioIds: $condominioIds,
-                validated: []
+                validated: [],
+                limit: 3 
             );
 
             $comunicazioni = $this->comunicazioneService->getComunicazioni(
                 anagrafica: $anagrafica,
                 condominioIds: $condominioIds,
-                validated: []
+                validated: [],
+                limit: 3 
             );
 
             $documenti = $this->documentoService->getDocumenti(
@@ -61,35 +62,29 @@ class UserDashboardController extends Controller
                 limit: 3
             );
 
-            // Fetch raw events (Questo ritorna una Collection, non un Paginator)
+            // Fetch raw events
             $eventiCollection = $this->recurrenceService->getEventsInNextDays(
                 days: 30,
                 anagrafica: $anagrafica,
                 condominioIds: $condominioIds
             );
 
-            // 3. 🔥 APPLICAZIONE WATERFALL (DASHBOARD) - FIXATO 🔥
-            // Poiché $eventiCollection è già una Collection, la passiamo direttamente
+            // 3. APPLICAZIONE WATERFALL (DASHBOARD)
             $eventiProcessati = $this->applyFinancialWaterfall(
                 $eventiCollection, 
                 $anagrafica->id
             );
             
-            // Prendiamo i primi 3 eventi GIA' calcolati
-            $eventiLimited = $eventiProcessati->take(30);
+            $eventiLimited = $eventiProcessati->take(3);
 
-            // Paginazione per gli altri widget
-            $segnalazioniLimited = $segnalazioni->take(3);
-            $comunicazioniLimited = $comunicazioni->take(3);
-        
         } catch (\Exception $e) {
             Log::error('Error getting dashboard widgets: ' . $e->getMessage());
             abort(500, 'Unable to fetch reports.');
         }
 
         return Inertia::render('dashboard/UserDashboard', [
-            'segnalazioni'  => SegnalazioneResource::collection($segnalazioniLimited),
-            'comunicazioni' => ComunicazioneResource::collection($comunicazioniLimited),
+            'segnalazioni'  => SegnalazioneResource::collection($segnalazioni),
+            'comunicazioni' => ComunicazioneResource::collection($comunicazioni),
             'eventi'        => EventoResource::collection($eventiLimited),
             'documenti'     => DocumentoResource::collection($documenti),
         ]);

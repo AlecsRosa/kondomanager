@@ -8,7 +8,7 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
-use App\Models\Gestionale\RataQuote;
+use App\Models\Saldo; // <--- Importante: Usiamo il modello Saldo
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
@@ -37,8 +37,17 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         $pianoRate->loadMissing('gestione');
         $nomeGestione = $pianoRate->gestione->nome ?? 'Gestione';
 
-        // Avviamo la transazione
-        DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione) {
+        // 1. RECUPERO MASIVO DEI SALDI INIZIALI
+        // Creiamo una mappa: [anagrafica_id => saldo_importo_centesimi]
+        // Assumiamo che il saldo sia unico per anagrafica in questo condominio/esercizio
+        $saldiMap = Saldo::where('esercizio_id', $esercizio->id)
+            ->where('condominio_id', $condominio->id)
+            ->selectRaw('anagrafica_id, SUM(saldo_iniziale) as totale')
+            ->groupBy('anagrafica_id')
+            ->pluck('totale', 'anagrafica_id')
+            ->toArray();
+
+        DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione, $saldiMap) {
 
             $catAdmin = CategoriaEvento::firstOrCreate(
                 ['name' => CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value],
@@ -49,19 +58,24 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 ['description' => 'Auto']
             );
 
-            // Carichiamo le rate
             $rate = $pianoRate->rate()
                 ->with(['rateQuote.anagrafica', 'rateQuote.immobile']) 
                 ->get(); 
 
             Log::info("Trovate " . $rate->count() . " rate da processare.");
 
-            foreach ($rate as $rata) {
+            // Ordiniamo le rate per data per identificare la prima cronologica
+            $rate = $rate->sortBy('data_scadenza');
+            $isPrimaRataAssoluta = true; // Flag per capire se siamo nel primo loop
 
-                // --- 1. EVENTO ADMIN: EMISSIONE ---
+            foreach ($rate as $index => $rata) {
+                
+                // Determiniamo se questa è la rata n.1 logica (quella che si accolla il saldo)
+                // Usiamo l'indice del loop o il numero rata
+                $isRataUno = ($rata->numero_rata == 1);
+
+                // --- 1. EVENTO ADMIN (Invariato) ---
                 $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
-                $titoloAdmin = "Emettere rata {$rata->numero_rata} - {$condominio->nome}";
-
                 $urlEmissione = route('admin.gestionale.esercizi.piani-rate.show', [
                     'condominio' => $condominio->id,
                     'esercizio'  => $esercizio->id,
@@ -69,76 +83,55 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 ]);
 
                 $eventoAdmin = Evento::firstOrCreate(
-                    [
-                        'title'       => $titoloAdmin,
-                        'start_time'  => $dataPromemoria,
-                    ],
+                    ['title' => "Emettere rata {$rata->numero_rata} - {$condominio->nome}", 'start_time' => $dataPromemoria],
                     [
                         'created_by'  => $user->id,
-                        'description' => "Ricordati di emettere le ricevute per questa rata entro la scadenza. Tutte le anagrafiche coinvolte riceveranno notifica dell'avvenuta emissione.",
+                        'description' => "Ricordati di emettere le rate per il condominio {$condominio->nome}.",
                         'end_time'    => $dataPromemoria->copy()->addHour(),
                         'category_id' => $catAdmin->id,
                         'visibility'  => VisibilityStatus::HIDDEN->value, 
                         'is_approved' => true,
                         'meta' => [
-                            'type'              => 'emissione_rata',
-                            'is_emitted'        => false,
-                            'requires_action'   => true, 
-                            'gestione'          => $nomeGestione,
-                            'condominio_nome'   => $condominio->nome,
-                            'totale_rata'       => $rata->importo_totale,
-                            'numero_rata'       => $rata->numero_rata,
-                            'action_url'        => $urlEmissione,
-                            'context' => [
-                                'piano_rate_id' => $pianoRate->id,
-                                'rata_id'       => $rata->id
-                            ],
+                            'type' => 'emissione_rata',
+                            'is_emitted' => false,
+                            'requires_action' => true, 
+                            'gestione' => $nomeGestione,
+                            'condominio_nome' => $condominio->nome,
+                            'totale_rata' => $rata->importo_totale,
+                            'numero_rata' => $rata->numero_rata,
+                            'action_url' => $urlEmissione,
+                            'context' => ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
                         ],
                     ]
                 );
-                
                 $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
-                if ($user->anagrafica_id) $eventoAdmin->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
 
-
-                // --- 1-BIS. EVENTO ADMIN: VERIFICA INCASSI ---
+                // --- 1-BIS. EVENTO ADMIN CHECK (Invariato) ---
                 $dataCheck = $rata->data_scadenza->copy()->addDays(4)->setTime(9, 0); 
-                $titoloCheck = "Verifica incassi - Rata {$rata->numero_rata} ({$condominio->nome})";
-                
                 $urlIncassi = route('admin.gestionale.movimenti-rate.create', ['condominio' => $condominio->id]);
-
                 $eventoCheck = Evento::firstOrCreate(
+                    ['title' => "Verifica incassi - Rata {$rata->numero_rata} ({$condominio->nome})", 'start_time' => $dataCheck],
                     [
-                        'title'      => $titoloCheck,
-                        'start_time' => $dataCheck,
-                    ],
-                    [
-                        'created_by'  => $user->id,
-                        'end_time'    => $dataCheck->copy()->addHour(),
-                        'description' => "La rata è scaduta il " . $rata->data_scadenza->format('d/m/Y') . ". I tempi tecnici bancari sono trascorsi: controlla l'estratto conto e registra gli incassi cumulativi.",
+                        'created_by' => $user->id,
+                        'end_time' => $dataCheck->copy()->addHour(),
+                        'description' => "Controlla l'estratto conto per verificare gli incassi relativi alla rata n. {$rata->numero_rata}.",
                         'category_id' => $catAdmin->id, 
-                        'visibility'  => VisibilityStatus::HIDDEN->value,
+                        'visibility' => VisibilityStatus::HIDDEN->value,
                         'is_approved' => true,
                         'meta' => [
-                            'type'            => 'controllo_incassi',
+                            'type' => 'controllo_incassi',
                             'requires_action' => true,
                             'condominio_nome' => $condominio->nome,
-                            'numero_rata'     => $rata->numero_rata,
-                            'gestione'        => $nomeGestione,
-                            'action_url'      => $urlIncassi,
-                            'context' => [
-                                'piano_rate_id' => $pianoRate->id,
-                                'rata_id'       => $rata->id
-                            ],
+                            'numero_rata' => $rata->numero_rata,
+                            'gestione' => $nomeGestione,
+                            'action_url' => $urlIncassi,
+                            'context' => ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
                         ],
                     ]
                 );
-                
                 $eventoCheck->condomini()->syncWithoutDetaching([$condominio->id]);
-                if ($user->anagrafica_id) $eventoCheck->anagrafiche()->syncWithoutDetaching([$user->anagrafica_id]);
 
-
-                // --- 2. EVENTI CONDÒMINI (LOGICA SMART) ---
+                // --- 2. EVENTI CONDÒMINI (CON LOGICA SALDO DINAMICA) ---
                 $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
 
                 foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
@@ -148,53 +141,71 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     // Check esistenza
                     $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
                         ->whereJsonContains('meta->context->rata_id', $rata->id)
-                        ->whereJsonContains('meta->type', 'scadenza_rata_condomino')
                         ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
                         ->exists();
 
                     if ($esiste) continue;
 
-                    $importoVal = $quote->sum('importo'); 
+                    $importoVal = $quote->sum('importo'); // Importo NETTO della rata (quello nel DB)
                     
-                    // Dettaglio quote
-                    $dettaglioQuote = $quote->map(function($q) {
+                    // --- LOGICA SCONTRINO (MATEMATICA INVERSA) ---
+                    // Recuperiamo il saldo dal DB (tabella saldi)
+                    $saldoInizialeTotale = isset($saldiMap[$anagraficaId]) ? (int)$saldiMap[$anagraficaId] : 0;
+                    
+                    // Decidiamo se applicare il saldo a QUESTA rata
+                    // Regola: Il saldo si visualizza solo sulla Rata 1
+                    $saldoApplicatoQui = 0;
+                    if ($isRataUno && $saldoInizialeTotale != 0) {
+                        $saldoApplicatoQui = $saldoInizialeTotale;
+                    }
+
+                    // Costruzione Dettaglio Quote con Audit
+                    $dettaglioQuote = $quote->map(function($q, $key) use ($saldoApplicatoQui) {
                         $immobile = $q->immobile;
                         $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
-                        return ['descrizione' => $desc, 'importo' => $q->importo];
-                    })->values()->toArray();
+                        
+                        // Trucco: Attribuiamo tutto il saldo alla PRIMA riga della rata
+                        // così lo scontrino appare una volta sola e i conti tornano.
+                        $saldoRiga = ($key === 0) ? $saldoApplicatoQui : 0;
+                        
+                        // Calcoliamo la "Quota Pura" inversa
+                        // Se ImportoNetto = QuotaPura + Saldo
+                        // Allora QuotaPura = ImportoNetto - Saldo
+                        $quotaPura = $q->importo - $saldoRiga;
 
-                    // CALCOLO DEL SALDO PROGRESSIVO PER IL MESSAGGIO 
-                    $saldoPregresso = RataQuote::where('anagrafica_id', $anagraficaId)
+                        return [
+                            'descrizione' => $desc,
+                            'importo' => $q->importo, // Questo rimane il netto reale da pagare (o credito)
+                            'audit' => [
+                                'quota_pura' => $quotaPura,
+                                'saldo_usato' => $saldoRiga,
+                            ]
+                        ];
+                    })->values()->toArray();
+                    // ---------------------------------------------
+
+                    // Logica Messaggi (Invariata)
+                    $saldoPregresso = \App\Models\Gestionale\RataQuote::where('anagrafica_id', $anagraficaId)
                         ->whereHas('rata', function($q) use ($rata, $pianoRate) {
                             $q->where('piano_rate_id', $pianoRate->id)
                               ->where('data_scadenza', '<', $rata->data_scadenza);
                         })
                         ->sum('importo');
 
-                    // Saldo virtuale alla data di questa rata
                     $saldoAttuale = $saldoPregresso + $importoVal;
 
-                    // --- GENERAZIONE MESSAGGI DINAMICI ---
                     if ($importoVal < 0) {
-                        // Rata 1 (Credito puro)
-                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore (es. avanzo esercizio precedente).\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
-                    
+                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore (es. avanzo esercizio precedente).\n\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
                     } elseif ($saldoAttuale < -0.01) {
-                        // Rata 2 (Debito coperto dal credito pregresso)
-                        $descUser = "Gentile {$anagrafica->nome}, è in scadenza la rata n. {$rata->numero_rata}.\nGrazie al tuo credito pregresso, questa rata risulta attualmente COPERTA e non richiede alcun versamento.\nVerifica sempre il saldo aggiornato nella tua area riservata.";
-                    
+                        $descUser = "Gentile {$anagrafica->nome}, è in scadenza la rata n. {$rata->numero_rata}.\n\nGrazie al tuo credito pregresso, questa rata risulta attualmente COPERTA e non richiede alcun versamento.\n\nVerifica sempre il saldo aggiornato nella tua area riservata.";
                     } else {
-                        // Rata 4 e 5 (Debito da pagare, totale o parziale)
-                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\nTi preghiamo di effettuare il pagamento entro la data indicata.";
-                        
+                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\n\nTi preghiamo di effettuare il pagamento entro la data indicata. Dopo aver effettuato il versamento, potrai segnalarlo all'amministratore tornando su questo evento.";
                         if ($saldoPregresso < -0.01) {
-                            $descUser .= "\n(Nota: Una parte dell'importo è stata compensata dal tuo credito residuo. Verifica l'importo esatto da versare nella dashboard).";
+                            $descUser .= "\n\n(Nota: Una parte dell'importo è stata compensata dal tuo credito residuo. Verifica l'importo esatto da versare nella dashboard).";
                         }
                     }
 
-                    if (!empty($rata->note)) {
-                        $descUser .= "\n\nNote: {$rata->note}";
-                    }
+                    if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
 
                     $eventoUser = Evento::create([
                         'title'       => "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
@@ -232,9 +243,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
             }
         }); 
 
-        if ($user) {
-            Cache::forget('inbox_count_' . $user->id);
-        }
+        if ($user) Cache::forget('inbox_count_' . $user->id);
         
         Log::info("Listener: Eventi creati con successo.");
     }
