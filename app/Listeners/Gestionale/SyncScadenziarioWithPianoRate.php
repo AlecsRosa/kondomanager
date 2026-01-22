@@ -124,6 +124,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'condominio_nome' => $condominio->nome,
                             'numero_rata' => $rata->numero_rata,
                             'gestione' => $nomeGestione,
+                            'totale_rata' => $rata->importo_totale,
                             'action_url' => $urlIncassi,
                             'context' => ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
                         ],

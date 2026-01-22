@@ -15,83 +15,99 @@ trait CalculatesFinancialWaterfall
             }])
             ->get();
 
-        // 1. Calcolo Globale Waterfall
+        // 1. Calcolo Globale (Ordinamento cronologico fondamentale)
         $rateAggregate = $tutteLeQuote->groupBy('rata_id')->map(function ($quotes) {
             $rata = $quotes->first()->rata;
-            $importoTotale = $quotes->sum('importo'); 
-            $pagatoTotale = $quotes->sum('importo_pagato');
-            
             return [
                 'rata_id' => $rata->id,
-                'numero_rata' => $rata->numero_rata, // Importante per il check Rata 1
+                'numero_rata' => $rata->numero_rata,
                 'scadenza' => $rata->data_scadenza,
-                'importo_netto' => $importoTotale,
-                'pagato' => $pagatoTotale
+                'importo_netto' => $quotes->sum('importo'),
+                'pagato' => $quotes->sum('importo_pagato')
             ];
         })->sortBy('scadenza');
 
-        $creditoDisponibile = 0;
+        // VARIABILI DI STATO (Si parte da zero!)
+        $creditoDisponibile = 0; 
+        $accumuloDebito = 0;
         $rataStatus = [];
 
-        // FASE A: Accumulo Credito
-        foreach ($rateAggregate as $rata) {
-            if ($rata['importo_netto'] < 0) {
-                $creditoDisponibile += abs($rata['importo_netto']);
-            }
-        }
+        // --- NESSUNA FASE A: Il calcolo è ora puramente sequenziale ---
 
-        // FASE B: Copertura Debiti e Calcolo Utilizzo Credito
+        // FASE B: Waterfall Sequenziale
         foreach ($rateAggregate as $rata) {
             $netto = $rata['importo_netto'];
             $id = $rata['rata_id'];
             
+            // FOTOGRAFIA: Quanto credito ho accumulato PRIMA di questa rata?
+            // Per la Rata 1, questo sarà 0. Ed è CORRETTO.
+            // Il frontend sommerà 0 al Saldo Iniziale del DB (-100), risultato: -100.
+            $creditoInizialeSnapshot = $creditoDisponibile; 
+
+            $residuoFinale = 0; 
+
             if ($netto > 0) {
+                // --- CASO RATA A DEBITO (da pagare) ---
                 $daPagareReale = max(0, $netto - $rata['pagato']);
-                $creditoUsatoQui = 0; // Quanto credito "mangia" questa rata?
+                $creditoUsatoQui = 0;
                 
                 if ($creditoDisponibile >= $daPagareReale) {
                     // Coperta Totalmente
                     $creditoUsatoQui = $daPagareReale;
-                    $creditoDisponibile -= $daPagareReale;
+                    $creditoDisponibile -= $daPagareReale; // Scalo dal portafoglio
+                    $residuoFinale = 0;
                     
                     $rataStatus[$id] = [
                         'residuo_reale' => 0,
                         'is_covered_by_credit' => true,
-                        'credito_usato' => $creditoUsatoQui,
-                        'numero_rata' => $rata['numero_rata']
+                        'credito_disponibile_start' => $creditoInizialeSnapshot,
+                        'numero_rata' => $rata['numero_rata'],
+                        'arretrati_pregressi' => $accumuloDebito
                     ];
                 } else {
                     // Coperta Parzialmente
                     $creditoUsatoQui = $creditoDisponibile;
                     $residuoFinale = max(0, $daPagareReale - $creditoDisponibile);
-                    $creditoDisponibile = 0;
+                    $creditoDisponibile = 0; // Portafoglio vuoto
                     
                     $rataStatus[$id] = [
                         'residuo_reale' => $residuoFinale,
                         'is_covered_by_credit' => ($creditoUsatoQui > 0 && $residuoFinale < 0.01), 
-                        'credito_usato' => $creditoUsatoQui,
-                        'numero_rata' => $rata['numero_rata']
+                        'credito_disponibile_start' => $creditoInizialeSnapshot,
+                        'numero_rata' => $rata['numero_rata'],
+                        'arretrati_pregressi' => $accumuloDebito
                     ];
                 }
             } else {
-                // Rata a credito
+                // --- CASO RATA A CREDITO (Rata 1 o conguagli) ---
+                // Questa rata NON consuma credito, lo GENERA.
+                // Quindi $creditoInizialeSnapshot qui è quello delle rate precedenti (0 per la Rata 1).
+                
+                // Aggiungiamo il surplus al portafoglio per le rate SUCCESSIVE
+                $creditoDisponibile += abs($netto);
+
                 $rataStatus[$id] = [
                     'residuo_reale' => $netto, 
                     'is_covered_by_credit' => false,
-                    'credito_usato' => 0,
-                    'numero_rata' => $rata['numero_rata']
+                    'credito_disponibile_start' => $creditoInizialeSnapshot, // Sarà 0 per Rata 1
+                    'numero_rata' => $rata['numero_rata'],
+                    'arretrati_pregressi' => $accumuloDebito
                 ];
+            }
+
+            // Aggiornamento Zainetto Debiti
+            if ($residuoFinale > 0.01) {
+                $accumuloDebito += $residuoFinale;
             }
         }
 
-        // 2. Iniezione Dati nell'Evento (Fix Inconsistenza)
+        // 2. Iniezione Dati nell'Evento (Invariato)
         return $events->map(function ($event) use ($rataStatus) {
             $meta = $event->meta;
             if (is_string($meta)) $meta = json_decode($meta, true);
             if (!is_array($meta)) $meta = [];
 
             $rataId = $meta['context']['rata_id'] ?? ($meta['rata_id'] ?? null);
-            // Fallback ID
             if (!$rataId && !empty($meta['dettaglio_quote'][0]['rata_id'])) {
                 $rataId = $meta['dettaglio_quote'][0]['rata_id'];
             }
@@ -99,32 +115,26 @@ trait CalculatesFinancialWaterfall
             if ($rataId && isset($rataStatus[$rataId])) {
                 $status = $rataStatus[$rataId];
                 
-                // A. Aggiorna Totali
                 $meta['importo_restante'] = $status['residuo_reale'];
                 $meta['is_covered_by_credit'] = $status['is_covered_by_credit'];
+                $meta['arretrati_pregressi'] = $status['arretrati_pregressi'];
 
-                // B. Aggiorna Dettaglio Quote (FIX AUDIT)
                 if (!empty($meta['dettaglio_quote'])) {
                     foreach ($meta['dettaglio_quote'] as $k => $quota) {
-                        
-                        // Fix 1: Se NON è Rata 1, azzera visualizzazione saldo iniziale
-                        if ($status['numero_rata'] > 1) {
-                            if (isset($quota['audit']['saldo_usato'])) {
-                                $meta['dettaglio_quote'][$k]['audit']['saldo_usato'] = 0;
-                            }
+                        // Fix 1: Reset saldo visuale per rate successive alla 1
+                        if ($status['numero_rata'] > 1 && isset($quota['audit']['saldo_usato'])) {
+                            $meta['dettaglio_quote'][$k]['audit']['saldo_usato'] = 0;
                         }
 
-                        // Fix 2: Se abbiamo usato credito, lo scriviamo nell'audit della prima riga
-                        if ($k === 0 && $status['credito_usato'] > 0.01) {
-                            // Iniettiamo il campo specifico per il frontend
-                            $meta['dettaglio_quote'][$k]['audit']['credito_pregresso_usato'] = -$status['credito_usato'];
+                        // Fix 2: Iniezione Waterfall
+                        // Se snapshot > 0, lo iniettiamo. Per Rata 1 sarà 0, quindi non inietta nulla.
+                        if ($k === 0 && $status['credito_disponibile_start'] > 0.01) {
+                            $meta['dettaglio_quote'][$k]['audit']['credito_pregresso_usato'] = -$status['credito_disponibile_start'];
                         }
                     }
                 }
-
                 $event->setAttribute('meta', $meta);
             }
-
             return $event;
         });
     }
