@@ -25,19 +25,23 @@ class SystemUpgradeController extends Controller
     /**
      * STEP 2: Esecuzione Upgrade
      */
-    public function run(GeneralSettings $settings)
+    public function run() 
     {
         try {
-            Log::info('Inizio aggiornamento sistema', [
-                'from_version' => $settings->version ?? 'N/A',
-                'to_version' => config('app.version'),
-            ]);
 
+            Log::info('Inizio aggiornamento sistema');
+
+            // 1. Esegui le migrazioni (ora la tabella settings viene aggiornata/creata)
             Artisan::call('migrate', ['--force' => true]);
+            
+            // 2. RECUPERA UN'ISTANZA FRESCA DOPO IL MIGRATE
+            // Questo forza Spatie a ri-leggere il database appena aggiornato
+            $settings = app(GeneralSettings::class);
             
             $settings->version = config('app.version');
             $settings->save();
 
+            // 3. Pulisci tutto
             Artisan::call('optimize:clear'); 
 
             if (!file_exists(public_path('storage'))) {
@@ -50,10 +54,13 @@ class SystemUpgradeController extends Controller
                 ->with('success', 'Aggiornamento completato con successo!');
 
         } catch (\Exception $e) {
+
             Log::error('Errore durante l\'aggiornamento: ' . $e->getMessage());
+
             return Redirect::back()->withErrors([
                 'msg' => 'Errore critico durante l\'aggiornamento: ' . $e->getMessage()
             ]);
+
         }
     }
 

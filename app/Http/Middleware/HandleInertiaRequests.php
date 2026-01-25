@@ -9,6 +9,7 @@ use Inertia\Middleware;
 use App\Models\Evento;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -52,6 +53,13 @@ class HandleInertiaRequests extends Middleware
 
             // Aggiungiamo il contatore globale
             'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, now()->addMinutes(10), function () use ($request) {
+
+                // --- IL FIX FONDAMENTALE ---
+                // Se la colonna 'meta' non esiste, non eseguire la query.
+                if (!Schema::hasColumn('eventi', 'meta')) {
+                    return 0;
+                }
+
                 return Evento::query()
                     // 1. Deve richiedere azione
                     ->whereJsonContains('meta->requires_action', true)

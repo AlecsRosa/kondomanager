@@ -6,9 +6,9 @@ use Spatie\LaravelSettings\Settings;
 
 class GeneralSettings extends Settings
 {
-    public bool $user_frontend_registration;
-    public string $language; 
-    public string $version;
+    public bool $user_frontend_registration = false;
+    public string $language = 'it';
+    public string $version = '0.0.0';
     
     public static function group(): string
     {

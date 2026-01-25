@@ -5,9 +5,9 @@
 [![Generic badge](https://img.shields.io/badge/Version-1.8.0_Beta.2-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 
-# KondoManager - Software gratuito per gestione condominiale
+# KondoManager - Software gratuito e open source per la gestione condominiale
 
-**KondoManager** è un innovativo software open source per la gestione condominiale, realizzato in **Laravel** e database **MySQL**. È pensato per semplificare la vita degli amministratori di condominio, offrendo al contempo trasparenza e servizi digitali ai condòmini.
+**KondoManager** è un innovativo software gratuito e open source per la gestione condominiale, realizzato in **Laravel** e database **MySQL**. È pensato per semplificare la vita degli amministratori di condominio, offrendo al contempo trasparenza e servizi digitali ai condòmini.
 
 ---
 

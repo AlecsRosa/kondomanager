@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckForPendingUpdates;
 use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckSuspendedUser;
 use App\Http\Middleware\CheckUserRegistration;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
 
         $middleware->web(append: [
+            CheckForPendingUpdates::class,
             SetLocaleMiddleware::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
