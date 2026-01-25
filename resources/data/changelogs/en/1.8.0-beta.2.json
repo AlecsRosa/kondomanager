@@ -1,0 +1,10 @@
+{
+    "title": "Universal Diamond 💎",
+    "features": [
+        "New automatic installation and update system",
+        "Meta column implementation for smart events",
+        "Improved administrator permission management",
+        "Cache and database performance optimization",
+        "Fix: Resolved subdomain redirect issue"
+    ]
+}

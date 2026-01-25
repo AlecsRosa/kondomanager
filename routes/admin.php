@@ -19,9 +19,12 @@ use App\Http\Controllers\Fornitori\FornitoreController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
+use App\Http\Middleware\CheckForPendingUpdates;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->group(function () {
+Route::prefix('admin')->as('admin.')
+->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore', CheckForPendingUpdates::class])
+->group(function () {
 
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');

@@ -3,70 +3,102 @@
 namespace App\Http\Controllers\System;
 
 use App\Http\Controllers\Controller;
+use App\Settings\GeneralSettings;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class SystemUpgradeController extends Controller
 {
-
-    // Recupera i dati del changelog
-    private function getChangelog() {
-        // Recuperiamo la versione dinamicamente dalla config
-        $version = config('app.version'); 
-
-        return [
-            'date' => date('d/m/Y'), 
-            'version' => $version,   
-            'features' => [
-                // NOTA: Queste feature dovrai aggiornarle a mano nel codice 
-                // prima di rilasciare la nuova versione, oppure leggerle da un file esterno.
-                'Nuovo sistema di installazione e aggiornamento automatico (Universal Diamond)',
-                'Migliorata la gestione dei permessi amministratore',
-                'Ottimizzazione cache e performance database',
-                'Fix: Risolto problema redirect su sottodomini',
-            ]
-        ];
-    }
-
-    // STEP 1: Pagina di Conferma
-    public function confirm()
+    /**
+     * STEP 1: Pagina di Conferma Upgrade
+     */
+    public function confirm(GeneralSettings $settings)
     {
-        // Passiamo alla vista la versione letta da config/app.php
         return Inertia::render('system/upgrade/Confirm', [
-            'version' => config('app.version') 
+            'currentVersion' => $settings->version ?? 'Inizializzazione',
+            'newVersion'     => config('app.version'),
         ]);
     }
 
-    // STEP 2: Esecuzione Comandi
-    public function run()
+    /**
+     * STEP 2: Esecuzione Upgrade
+     */
+    public function run(GeneralSettings $settings)
     {
         try {
-            // Esecuzione comandi reali
+            Log::info('Inizio aggiornamento sistema', [
+                'from_version' => $settings->version ?? 'N/A',
+                'to_version' => config('app.version'),
+            ]);
+
             Artisan::call('migrate', ['--force' => true]);
             
-            // Pulisce la cache per assicurarsi che config('app.version') legga il nuovo valore
-            // se per caso era rimasto in cache quello vecchio
+            $settings->version = config('app.version');
+            $settings->save();
+
             Artisan::call('optimize:clear'); 
 
             if (!file_exists(public_path('storage'))) {
                 Artisan::call('storage:link');
             }
 
-            // Redirect Inertia alla pagina changelog
+            Log::info('Aggiornamento completato con successo');
+
             return Redirect::route('system.upgrade.changelog')
                 ->with('success', 'Aggiornamento completato con successo!');
 
         } catch (\Exception $e) {
-            return Redirect::back()->withErrors(['msg' => 'Errore critico: ' . $e->getMessage()]);
+            Log::error('Errore durante l\'aggiornamento: ' . $e->getMessage());
+            return Redirect::back()->withErrors([
+                'msg' => 'Errore critico durante l\'aggiornamento: ' . $e->getMessage()
+            ]);
         }
     }
 
-    // STEP 3: Pagina Changelog
-    public function showChangelog()
+    /**
+     * STEP 3: Mostra Changelog Post-Upgrade
+     */
+    public function showChangelog(GeneralSettings $settings)
     {
         return Inertia::render('system/upgrade/Changelog', [
-            'log' => $this->getChangelog()
+            'log' => $this->getChangelog($settings)
         ]);
+    }
+
+    /**
+     * Carica i dati dal file JSON basandosi sulla lingua in GeneralSettings
+     */
+    private function getChangelog(GeneralSettings $settings): array
+    {
+        $version = config('app.version');
+        $lang = $settings->language ?? 'it'; // Fallback all'italiano se nullo
+        
+        $path = resource_path("data/changelogs/{$lang}/{$version}.json");
+
+        // Se il file per la lingua scelta non esiste, prova il fallback in italiano
+        if (!file_exists($path)) {
+            $path = resource_path("data/changelogs/it/{$version}.json");
+        }
+
+        // Se non esiste neanche il file in italiano, restituiamo un array di default
+        if (!file_exists($path)) {
+            return [
+                'date'    => date('d/m/Y'), 
+                'version' => $version,   
+                'title'   => 'Aggiornamento di sistema',
+                'features' => ['Novità non disponibili per questa versione.'],
+            ];
+        }
+
+        $content = json_decode(file_get_contents($path), true);
+
+        return [
+            'date'     => date('d/m/Y'), 
+            'version'  => $version,   
+            'title'    => $content['title'] ?? 'Aggiornamento di sistema',
+            'features' => $content['features'] ?? [],
+        ];
     }
 }

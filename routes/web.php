@@ -118,7 +118,22 @@ Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])
 | System Upgrade Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified', 'role:amministratore'])->group(function () {
+
+Route::middleware(['auth', 'verified', 'role:amministratore'])
+    ->prefix('system/upgrade')
+    ->name('system.upgrade.')
+    ->group(function () {
+        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])
+            ->name('confirm');
+        
+        Route::post('/run', [SystemUpgradeController::class, 'run'])
+            ->name('run');
+        
+        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])
+            ->name('changelog');
+    });
+
+/* Route::middleware(['auth', 'verified', 'role:amministratore'])->group(function () {
     
     // 1. Punto di ingresso (dall'installer o dal login) -> Mostra la CARD di conferma
     Route::get('/system/upgrade/finalize', [SystemUpgradeController::class, 'confirm'])
@@ -132,7 +147,7 @@ Route::middleware(['auth', 'verified', 'role:amministratore'])->group(function (
     Route::get('/system/upgrade/whats-new', [SystemUpgradeController::class, 'showChangelog'])
         ->name('system.upgrade.changelog');
 
-});
+}); */
 
 /*
 |--------------------------------------------------------------------------
