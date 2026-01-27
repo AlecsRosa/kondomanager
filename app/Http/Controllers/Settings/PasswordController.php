@@ -31,7 +31,15 @@ class PasswordController extends Controller
     {
         $validated = $request->validate([
             'current_password' => ['required', 'current_password'],
-            'password' => ['required', Password::defaults(), 'confirmed'],
+            'password' => [
+                'required', 
+                Password::defaults(), 
+                'confirmed', 
+                'different:current_password' // Validazione nativa
+            ],
+        ], [
+            // Messaggio personalizzato per migliorare la UX
+            'password.different' => 'La nuova password deve essere diversa dalla password attuale.',
         ]);
 
         $request->user()->update([
