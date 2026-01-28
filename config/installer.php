@@ -34,7 +34,8 @@ return [
             'key'           => 'environment',
             'label'         => 'Impostazioni ambientali',
             'description'   => 'Raccogliere le impostazioni ambientali',
-            'component'     => \Eii\Installer\Livewire\Install\EnvironmentSettings::class,
+            /* 'component'     => \Eii\Installer\Livewire\Install\EnvironmentSettings::class, */
+            'component'     => \App\Livewire\Installer\FixedEnvironmentSettings::class,
         ],
         [
             'key'           => 'mail',
