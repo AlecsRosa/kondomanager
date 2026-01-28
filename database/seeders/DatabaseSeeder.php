@@ -17,9 +17,9 @@ class DatabaseSeeder extends Seeder
         // 1. Sempre per primo: Sincronizza Ruoli e Permessi (è già sicuro grazie a updateOrCreate)
         $this->call(RolesAndPermissionsSeeder::class);
 
-        // 2. UserSeeder: Lo eseguiamo SOLO se non esiste nessun amministratore
-        // Questo permette all'admin di cambiare email/password senza essere sovrascritto
-        if (User::role(Role::AMMINISTRATORE->value)->count() === 0) {
+        // 2. UserSeeder: Controllo intelligente per lo UserSeeder
+        // Se il wizard è disattivato (false) e non c'è un admin, lo creiamo.
+        if (!config('installer.run_installer') && User::role(Role::AMMINISTRATORE->value)->count() === 0) {
             $this->call(UserSeeder::class);
         }
 

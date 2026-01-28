@@ -42,7 +42,7 @@ const props = defineProps({
 
             <CardFooter class="bg-gray-50/50 border-t pt-6">
                 <Button as-child class="w-full" size="lg">
-                    <Link :href="route('home')">
+                     <Link :href="route('admin.dashboard')">
                         Torna alla dashboard
                         <ArrowRight class="ml-2 h-4 w-4" />
                     </Link>
