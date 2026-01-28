@@ -49,7 +49,11 @@ class CategoriaFornitoreSeeder extends Seeder
         ];
 
         foreach ($categories as $category) {
-            CategoriaFornitore::create($category);
+            CategoriaFornitore::firstOrCreate(
+                ['name' => $category['name']],
+                ['description' => $category['description']]
+            );
         }
+
     }
 }

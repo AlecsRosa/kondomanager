@@ -21,11 +21,5 @@ class UserSeeder extends Seeder
             'email_verified_at' => now(),
         ])->assignRole(Role::AMMINISTRATORE->value); 
 
-    /*     User::factory()
-            ->count(50)
-            ->create()
-            ->each(function ($user) {
-                $user->assignRole('utente');
-            }); */
     }
 }
