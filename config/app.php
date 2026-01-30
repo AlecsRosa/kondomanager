@@ -23,9 +23,13 @@ return [
     | This value is the version of your application. This value is used when
     | the framework needs to place the application's version in a notification
     | or any other location as required by the application or its packages.
+    |
+    | IMPORTANTE:
+    | - Nello ZIP della Beta 2 questo valore deve essere '1.8.0-beta.2'
+    | - Nello ZIP della Beta 3 questo valore deve essere '1.8.0-beta.3'
     */
 
-    'version' => env('APP_VERSION', '1.8.0-beta.2'),
+    'version' => env('APP_VERSION', '1.8.0-beta.3'),
 
     /*
     |--------------------------------------------------------------------------

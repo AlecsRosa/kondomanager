@@ -123,14 +123,11 @@ Route::middleware(['auth', 'verified', 'role:amministratore'])
     ->prefix('system/upgrade')
     ->name('system.upgrade.')
     ->group(function () {
-        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])
-            ->name('confirm');
-        
-        Route::post('/run', [SystemUpgradeController::class, 'run'])
-            ->name('run');
-        
-        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])
-            ->name('changelog');
+        Route::get('/', [SystemUpgradeController::class, 'index'])->name('index');
+        Route::post('/launch', [SystemUpgradeController::class, 'launch'])->name('launch');
+        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
+        Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
+        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
     });
 
 /*
