@@ -12,7 +12,7 @@ class UpdateService
     private const BRIDGE_FILE = 'update_bridge.json';
     
     // La "Matrice" dell'installer che abbiamo appena creato
-    private const MASTER_PATH = '../resources/installer/index.php'; 
+    private const MASTER_PATH = 'resources/installer/index.php'; 
 
     /**
      * Verifica la presenza di aggiornamenti remoti.
