@@ -22,8 +22,9 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
-        'manage'    => 'Gestisci',
-        'settings'  => 'Impostazioni',
+        'manage'     => 'Gestisci',
+        'settings'   => 'Impostazioni',
+        'update_now' => 'Aggiorna ora',  
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -35,6 +36,9 @@ return [
         'users_settings_description'    => 'Impostazioni di gestione degli utenti, ruoli e permessi',
         'backups_settings_title'        => 'Gestione backups',
         'backups_settings_description'  => 'Impostazioni di gestione dei backups',
+        'updates_title'                 => 'Aggiornamenti sistema',
+        'updates_desc_available'        => 'Nuova versione disponibile: :version',
+        'updates_desc_latest'           => 'Il sistema è aggiornato all\'ultima versione',
         'language_settings_title'       => 'Lingua applicazione',
         'language_settings_description' => 'Seleziona la lingua principale per l\'applicazione',
         'default_building_title'        => 'Apri condominio al login',
@@ -50,7 +54,7 @@ return [
     'placeholder' => [
         'select_building' => 'Seleziona condominio',
         'select_language' => 'Seleziona lingua',
-        'search_settings' => 'Filtrar configurações...',
+        'search_settings' => 'Filtra impostazioni...',
         'language' => [
             'it' => 'Italiano',
             'en' => 'Inglese',

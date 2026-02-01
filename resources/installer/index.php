@@ -1,14 +1,11 @@
 <?php
 /**
- * KondoManager Auto-Update Engine - v13.0 Bridge-Only
- * 
- * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
+ * KondoManager Auto-Update Engine - v13.1 Bridge-Only
+ * * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
  * Funziona SOLO in modalità aggiornamento automatico via Laravel bridge
- * 
- * Posizione: resources/installer/index.php
+ * * Posizione: resources/installer/index.php
  * Attivazione: Copiato in root da UpdateService quando necessario
- * 
- * @version 13.0.0
+ * * @version 13.0.0
  * @author KondoManager Team
  * @date 31 Gennaio 2026
  */
@@ -60,7 +57,7 @@ if (!file_exists($bridgeFile)) {
     <head>
         <meta charset=\"UTF-8\">
         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-        <title>KondoManager - Bridge Required</title>
+        <title>KondoManager - Bridge required</title>
         <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
             .container { background: white; border-radius: 16px; padding: 40px; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }
@@ -74,12 +71,12 @@ if (!file_exists($bridgeFile)) {
     <body>
         <div class=\"container\">
             <div class=\"icon\">⚙️</div>
-            <h1>Auto-Update Engine</h1>
+            <h1>Auto-Update engine</h1>
             <p><strong>Questo file funziona solo in modalità aggiornamento automatico.</strong></p>
             <p class=\"code\">update_bridge.json</p>
-            <p>File mancante. Avvia l'aggiornamento dalla <a href=\"/system/upgrade\">Dashboard Laravel</a></p>
+            <p>File mancante. Avvia l'aggiornamento dalla <a href=\"/system/upgrade\">dashboard di Kondomanager</a></p>
             <hr style=\"border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;\">
-            <p style=\"font-size: 14px; color: #9ca3af;\">Per installazioni nuove, usa il file standalone di setup.</p>
+            <p style=\"font-size: 14px; color: #9ca3af;\">Per installazioni nuove, usa il file standalone di setup che puoi scaricare dal sito ufficiale di Kondomanager.</p>
         </div>
     </body>
     </html>
@@ -133,10 +130,10 @@ logTech("Excluded items: " . count($excludeItems));
 
 $langs = [
     'it' => [
-        'title' => 'Aggiornamento Sistema',
-        'welcome' => 'Aggiornamento in Corso',
-        'tagline' => 'Versione Target: v%s',
-        'btn_text' => 'Avvia Aggiornamento',
+        'title' => 'Aggiornamento sistema',
+        'welcome' => 'Aggiornamento in corso',
+        'tagline' => 'Versione target: v%s',
+        'btn_text' => 'Avvia aggiornamento',
         'step_start' => 'Inizializzazione...',
         'step_down' => 'Download pacchetto v%s...',
         'step_down_prog' => 'Download: %s MB / %s MB',
@@ -155,10 +152,10 @@ $langs = [
         'msg_rollback_ko' => 'ATTENZIONE: Rollback fallito. Verifica manualmente.',
     ],
     'en' => [
-        'title' => 'System Update',
-        'welcome' => 'Update in Progress',
-        'tagline' => 'Target Version: v%s',
-        'btn_text' => 'Start Update',
+        'title' => 'System update',
+        'welcome' => 'Update in progress',
+        'tagline' => 'Target version: v%s',
+        'btn_text' => 'Start update',
         'step_start' => 'Initializing...',
         'step_down' => 'Downloading package v%s...',
         'step_down_prog' => 'Download: %s MB / %s MB',
@@ -244,6 +241,12 @@ function sendProgress($pct, $msg, $status='current', $replace=false) {
     flush();
 }
 
+// FIX: Correzione per hosting con session.gc_divisor = 0
+if ((int)ini_get('session.gc_divisor') === 0) {
+    @ini_set('session.gc_divisor', 1000);
+    @ini_set('session.gc_probability', 1);
+}
+
 session_start();
 
 // ============================================================================
@@ -286,43 +289,54 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 <?php exit; }
 
 // ============================================================================
-// 7. EXECUTION (POST Request)
+// 7. EXECUTION (POST Request) - UI AGGIORNATA STYLE V12.4
 // ============================================================================
 ?>
 <!DOCTYPE html>
 <html lang="<?= getLang() ?>">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= t('title') ?></title>
     <style>
-        body { background: #0f172a; color: #e2e8f0; font-family: ui-monospace, 'SF Mono', Consolas, monospace; padding: 20px; line-height: 1.6; margin: 0; }
-        #log { max-width: 800px; margin: 0 auto; }
-        .entry { margin-bottom: 8px; }
-        .pct { color: #64748b; }
-        .success { color: #4ade80; }
-        .error { color: #f87171; }
-        .final { text-align: center; margin-top: 30px; }
-        .btn-final { background: #4ade80; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 700; display: inline-block; }
+        body { font-family: -apple-system, sans-serif; background: #f8fafc; color: #334155; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #fff; width: 100%; max-width: 550px; padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .bar-container { background: #f1f5f9; height: 10px; border-radius: 5px; overflow: hidden; margin: 20px 0; }
+        .bar-fill { background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s; }
+        .bar-fill.error { background: #dc2626; }
+        .log { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; }
+        .log-line { margin-bottom: 5px; }
+        .ok { color: #4ade80; } .err { color: #f87171; }
     </style>
 </head>
 <body>
-    <div id="log"></div>
-    <script nonce="<?= $nonce ?>">
-        function updateProgress(p, m, s, r) {
-            const log = document.getElementById('log');
-            const entry = '<div class="entry ' + s + '"><span class="pct">[' + p + '%]</span> ' + m + '</div>';
-            if (r && log.lastElementChild) {
-                log.lastElementChild.outerHTML = entry;
-            } else {
-                log.innerHTML += entry;
-            }
-            window.scrollTo(0, document.body.scrollHeight);
-        }
-        function showFinal(url) {
-            document.getElementById('log').innerHTML += '<div class="final"><a href="' + url + '" class="btn-final">✓ Completa Aggiornamento</a></div>';
-        }
-    </script>
+    <div class="card">
+        <h2 style="text-align:center; margin-top:0"><?= t('welcome') ?></h2>
+        <div class="bar-container"><div class="bar-fill" id="bar"></div></div>
+        <div class="log" id="log"></div>
+    </div>
+
+<script nonce="<?= $nonce ?>">
+function updateProgress(p, m, s, replace) {
+    document.getElementById('bar').style.width = p + '%';
+    const log = document.getElementById('log');
+    if (replace && log.lastElementChild) { log.lastElementChild.innerHTML = '• ' + m; }
+    else {
+        const d = document.createElement('div');
+        d.className = 'log-line';
+        let icon = s === 'success' ? '<span class="ok">✓</span>' : (s === 'error' ? '<span class="err">✕</span>' : '•');
+        d.innerHTML = icon + ' ' + m;
+        log.appendChild(d); log.scrollTop = log.scrollHeight;
+    }
+    if (s === 'error') document.getElementById('bar').classList.add('error');
+}
+function showFinal(url) {
+    const el = document.getElementById('log');
+    const d = document.createElement('div');
+    d.innerHTML = '<br><strong style="color:#4ade80">REDIRECT...</strong> <a href="'+url+'" style="color:#fff">Click here if stuck</a>';
+    el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+</script>
+
 <?php
 flush();
 
@@ -531,6 +545,24 @@ try {
     
     safeRmdir(TEMP_DIR);
     @unlink(ZIP_FILE);
+
+    // PULIZIA FILE OBSOLETI (Vecchie versioni)
+    $obsoletePaths = [
+        __DIR__ . '/tests',
+        __DIR__ . '/docs',
+        __DIR__ . '/docker',
+        __DIR__ . '/index.php.installed',
+    ];
+
+    foreach ($obsoletePaths as $path) {
+        if (is_dir($path)) {
+            safeRmdir($path);
+            logTech("Removed obsolete directory: " . basename($path));
+        } elseif (file_exists($path)) {
+            @unlink($path);
+            logTech("Removed obsolete file: " . basename($path));
+        }
+    }
     
     // Laravel cache clearing
     $cacheDir = __DIR__ . '/bootstrap/cache';

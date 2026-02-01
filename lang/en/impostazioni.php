@@ -22,8 +22,9 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
-        'manage'    => 'Manage',
-        'settings'  => 'Settings',
+        'manage'     => 'Manage',
+        'settings'   => 'Settings',
+        'update_now' => 'Update now',
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -35,6 +36,9 @@ return [
         'users_settings_description'    => 'Settings for managing users, roles, and permissions',
         'backups_settings_title'        => 'Backup management',
         'backups_settings_description'  => 'Settings related to database and file backups',
+        'updates_title'                 => 'System updates',
+        'updates_desc_available'        => 'New version available: :version',
+        'updates_desc_latest'           => 'System is up to date with the latest version',
         'language_settings_title'       => 'Application language',
         'language_settings_description' => 'Select the primary language for the entire application',
         'default_building_title'        => 'Open building on login',

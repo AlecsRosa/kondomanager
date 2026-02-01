@@ -8,12 +8,25 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// 1. PULIZIA AUTOMATICA (Garbage Collector)
-// Esegue il pruning dei modelli (es. Eventi vecchi di 2 anni) ogni notte.
+// ============================================================================
+// 1. MANUTENZIONE DATABASE (Garbage Collector)
+// ============================================================================
+// Esegue il pruning dei modelli (es. Eventi vecchi) ogni notte a mezzanotte.
 Schedule::command('model:prune')->daily();
 
-// 2. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
-// Si attiva solo se configurato in config/app.php o .env
+// ============================================================================
+// 2. CONTROLLO AGGIORNAMENTI SISTEMA (Notifica Badge)
+// ============================================================================
+// Controlla gli aggiornamenti ogni notte alle 04:00 per non sovrapporsi al backup/prune.
+Schedule::command('system:check-updates')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// ============================================================================
+// 3. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
+// ============================================================================
+// Si attiva solo se configurato in config/app.php
 if (config('app.scheduler_queue_worker')) {
     Schedule::command('queue:work --stop-when-empty --max-time=55')
         ->everyMinute()

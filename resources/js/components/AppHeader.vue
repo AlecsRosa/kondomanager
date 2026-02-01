@@ -30,6 +30,9 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
 
+// ✅ AGGIUNTO: Recupera stato update
+const updateAvailable = computed(() => page.props.system_update?.available || false)
+
 // Active route helper
 const isCurrentRoute = (url?: string) => url && page.url === url;
 
@@ -72,7 +75,14 @@ const rightNavItems = computed(() =>
     [
         { type: 'link', title: trans('appHeader.repository'), href: 'https://github.com/vince844/kondomanager-free', icon: GitGraph, external: true },
         { type: 'link', title: trans('appHeader.documentation'), href: 'https://kondomanager.com/docs/index.html', icon: BookText, external: true },
-        { type: 'link', title: trans('appHeader.settings'), href: '/impostazioni', icon: Settings, permissions: [Permission.MANAGE_GENERAL_SETTINGS] },
+        { 
+            type: 'link', 
+            title: trans('appHeader.settings'),
+            href: '/impostazioni', 
+            icon: Settings, 
+            permissions: [Permission.MANAGE_GENERAL_SETTINGS], 
+            hasBadge: updateAvailable.value // ✅ AGGIUNTO
+        },
     ].filter(item => canAccess(item))
 );
 
@@ -228,18 +238,27 @@ const isMobileItemExpanded = (title: string) =>
                     <div class="hidden lg:flex gap-1">
                         <TooltipProvider>
                             <template v-for="item in rightNavItems" :key="item.title">
-                                <Tooltip>
-                                    <TooltipTrigger as-child>
-                                        <Button variant="ghost" size="icon" class="h-9 w-9">
-                                            <a v-if="item.external" :href="item.href" target="_blank" rel="noopener">
+                                <Tooltip :delay-duration="300"> <TooltipTrigger as-child>
+                                        <Button variant="ghost" size="icon" class="h-9 w-9 relative overflow-visible"> <span 
+                                                v-if="item.hasBadge" 
+                                                class="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-neutral-950 pointer-events-none"
+                                            ></span>
+
+                                            <a v-if="item.external" :href="item.href" target="_blank" rel="noopener" class="flex items-center justify-center w-full h-full">
                                                 <component :is="item.icon" class="size-5 opacity-80" />
                                             </a>
-                                            <Link v-else :href="item.href">
+                                            <Link v-else :href="item.href" class="flex items-center justify-center w-full h-full">
                                                 <component :is="item.icon" class="size-5 opacity-80" />
                                             </Link>
                                         </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent><p>{{ item.title }}</p></TooltipContent>
+                                    <TooltipContent side="bottom" :side-offset="5"> <p>
+                                            {{ item.title }}
+                                            <span v-if="item.hasBadge" class="ml-1 text-xs text-orange-400 font-medium">
+                                                (Update)
+                                            </span>
+                                        </p>
+                                    </TooltipContent>
                                 </Tooltip>
                             </template>
                         </TooltipProvider>

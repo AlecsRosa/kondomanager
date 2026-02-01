@@ -5,19 +5,23 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Cache;
 
 class UpdateService
 {
     private const UPDATE_URL = 'https://kondomanager.com/packages/latest.json';
     private const BRIDGE_FILE = 'update_bridge.json';
     private const MASTER_PATH = 'resources/installer/index.php';
+    
+    // Cache keys
+    private const CACHE_UPDATE_AVAILABLE = 'system.update_available';
+    private const CACHE_REMOTE_VERSION = 'system.remote_version';
 
     /**
      * Verifica se gli aggiornamenti automatici sono abilitati
      */
     public function isAutoUpdateEnabled(): bool
     {
-        // Verifica se l'installazione è avvenuta tramite wizard
         return config('installer.run_installer', false) === true;
     }
 
@@ -26,7 +30,6 @@ class UpdateService
      */
     public function checkRemoteVersion(): ?array
     {
-        // GATE: Solo se auto-update abilitato
         if (!$this->isAutoUpdateEnabled()) {
             Log::info('Auto-update disabled - manual installation detected');
             return null;
@@ -42,10 +45,19 @@ class UpdateService
             $latest = $data['latest_stable'] ?? null;
             
             if (!$latest || version_compare($latest, $current, '<=')) {
+                // Nessun aggiornamento - pulisci cache
+                $this->clearUpdateCache();
                 return null;
             }
 
-            return collect($data['releases'] ?? [])->firstWhere('version', $latest);
+            $release = collect($data['releases'] ?? [])->firstWhere('version', $latest);
+            
+            // Aggiornamento disponibile - salva in cache
+            if ($release) {
+                $this->setUpdateAvailable($latest);
+            }
+            
+            return $release;
 
         } catch (\Exception $e) {
             Log::warning('Update check failed: ' . $e->getMessage());
@@ -54,11 +66,53 @@ class UpdateService
     }
 
     /**
+     * NUOVO: Imposta flag aggiornamento disponibile in cache
+     */
+    public function setUpdateAvailable(string $version): void
+    {
+        // USA forever INVECE DI put CON TEMPO
+        // Questo salva il dato "per sempre" (finché non lo cancelliamo noi o si svuota la cache globale)
+        Cache::forever(self::CACHE_UPDATE_AVAILABLE, true);
+        Cache::forever(self::CACHE_REMOTE_VERSION, $version);
+        
+        Log::info('Update available cached', [
+            'version' => $version,
+            'current' => config('app.version')
+        ]);
+    }
+
+    /**
+     * NUOVO: Pulisci cache aggiornamenti
+     */
+    public function clearUpdateCache(): void
+    {
+        Cache::forget(self::CACHE_UPDATE_AVAILABLE);
+        Cache::forget(self::CACHE_REMOTE_VERSION);
+        
+        Log::info('Update cache cleared');
+    }
+
+    /**
+     * NUOVO: Verifica se c'è un aggiornamento (per UI)
+     */
+    public function hasUpdateAvailable(): bool
+    {
+        return Cache::get(self::CACHE_UPDATE_AVAILABLE, false);
+    }
+
+    /**
+     * NUOVO: Ottieni versione remota (per UI)
+     */
+    public function getRemoteVersion(): string
+    {
+        return Cache::get(self::CACHE_REMOTE_VERSION, '');
+    }
+
+    /**
      * Prepara il sistema per l'aggiornamento
      */
     public function prepareForUpgrade(array $release): array
     {
-        // GATE: Verifica auto-update abilitato
         if (!$this->isAutoUpdateEnabled()) {
             throw new \Exception('Gli aggiornamenti automatici non sono disponibili per installazioni manuali.');
         }

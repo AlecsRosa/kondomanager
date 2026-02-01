@@ -109,6 +109,11 @@ class SystemUpgradeController extends Controller
 
             // 4. INVALIDA CACHE MIDDLEWARE
             Cache::forget('system.needs_upgrade');
+            
+            // AGGIUNTO: Pulisci anche cache aggiornamenti
+            $updateService = app(UpdateService::class);
+            $updateService->clearUpdateCache();
+
             Log::info('Upgrade middleware cache invalidated');
 
             // 4. Storage link

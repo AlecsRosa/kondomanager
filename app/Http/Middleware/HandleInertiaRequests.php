@@ -10,6 +10,7 @@ use App\Models\Evento;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
+use App\Services\UpdateService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -25,7 +26,9 @@ class HandleInertiaRequests extends Middleware
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
         
         // Recuperiamo il locale impostato dal SetLocaleMiddleware
-        $locale = app()->getLocale();
+    /*     $locale = app()->getLocale(); */
+
+        $updateService = app(UpdateService::class);
 
         return [
             ...parent::share($request),
@@ -72,6 +75,15 @@ class HandleInertiaRequests extends Middleware
                     ->where(fn(Builder $q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
                     ->count();
             }) : 0,
+
+            // AGGIUNTO: Stato aggiornamenti sistema
+            'system_update' => [
+                'available' => $updateService->isAutoUpdateEnabled() 
+                    ? $updateService->hasUpdateAvailable() 
+                    : false,
+                'new_version' => $updateService->getRemoteVersion(),
+                'current_version' => config('app.version'),
+            ],
 
             'quote' => ['message' => trim($message), 'author' => trim($author)],
         ];

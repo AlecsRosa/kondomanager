@@ -22,8 +22,9 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
-        'manage'    => 'Gerir',
-        'settings'  => 'Configurações',
+        'manage'     => 'Gerir',
+        'settings'   => 'Configurações',
+        'update_now' => 'Atualizar agora',
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -35,6 +36,9 @@ return [
         'users_settings_description'    => 'Configurações de gestão de utilizadores, papéis e permissões',
         'backups_settings_title'        => 'Gestão de cópias de segurança',
         'backups_settings_description'  => 'Configurações de gestão das cópias de segurança',
+        'updates_title'                 => 'Atualizações do sistema',
+        'updates_desc_available'        => 'Nova versão disponível: :version',
+        'updates_desc_latest'           => 'O sistema está atualizado com a versão mais recente',
         'language_settings_title'       => 'Idioma da aplicação',
         'language_settings_description' => 'Selecione o idioma principal da aplicação',
         'default_building_title'        => 'Abrir condomínio ao iniciar sessão',

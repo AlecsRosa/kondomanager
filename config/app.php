@@ -29,7 +29,7 @@ return [
     | - Nello ZIP della Beta 3 questo valore deve essere '1.8.0-beta.3'
     */
 
-    'version' => env('APP_VERSION', '1.8.0-beta.3'),
+    'version' => env('APP_VERSION', '1.8.0-beta.5'),
 
     /*
     |--------------------------------------------------------------------------
