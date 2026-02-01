@@ -8,7 +8,7 @@ defineProps({
 </script>
 
 <template>
-    <Head title="Aggiornamenti Automatici" />
+    <Head title="Aggiornamenti automatici" />
     
     <div class="max-w-2xl mx-auto py-12 px-4">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -29,19 +29,19 @@ defineProps({
                 
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
                     <h3 class="font-semibold text-blue-900 mb-2">
-                        📘 Procedura Aggiornamento Manuale
+                        Procedura di aggiornamento manuale
                     </h3>
                     <ol class="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-                        <li>Scarica l'ultima versione da <a href="https://kondomanager.com" class="underline font-medium">kondomanager.com</a></li>
-                        <li>Carica il file <code class="bg-blue-100 px-1 rounded">index.php</code> nella root del sito</li>
-                        <li>Visita <code class="bg-blue-100 px-1 rounded">https://kondomanager.com</code></li>
-                        <li>Segui la procedura guidata</li>
+                        <li>Scarica il file <strong>index.php</strong> dal sito ufficiale di Kondomanager.</li>
+                        <li>Caricalo nella cartella principale del sito (via FTP o File Manager).</li>
+                        <li>Visita: <code class="bg-blue-100 px-1 rounded">tuodominio.com/index.php</code></li>
+                        <li>Il sistema completerà l'aggiornamento automaticamente.</li>
                     </ol>
                 </div>
                 
                 <div class="mt-6 pt-6 border-t border-gray-200">
                     <p class="text-sm text-gray-500">
-                        Versione corrente: <strong class="text-gray-700">{{ $page.props.auth.app_version }}</strong>
+                        Versione corrente: <strong class="text-gray-700">{{ $page.props.version }}</strong>
                     </p>
                 </div>
             </div>

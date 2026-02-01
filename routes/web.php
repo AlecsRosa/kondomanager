@@ -113,13 +113,49 @@ Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
     ->middleware('signed', 'throttle:6,1');
 
+
 /*
 |--------------------------------------------------------------------------
 | System Upgrade Routes
 |--------------------------------------------------------------------------
 */
 
+// GRUPPO 1: Rotte ibride (Manuale + Automatico)
+// Queste rotte NON devono avere il middleware 'auto.update' perché servono
+// anche a chi aggiorna caricando i file via FTP per lanciare le migrazioni DB.
+Route::middleware(['auth', 'verified', 'role:amministratore'])
+    ->prefix('system/upgrade')
+    ->name('system.upgrade.')
+    ->group(function () {
+        // La Dashboard: Il controller gestisce internamente la vista "Disabled"
+        Route::get('/', [SystemUpgradeController::class, 'index'])->name('index');
+        
+        // Pagina di conferma database (Accessibile dopo upload manuale o auto)
+        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
+        
+        // Esecuzione migrazioni (Deve funzionare anche in manuale!)
+        Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
+        
+        // Changelog
+        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
+    });
+
+// GRUPPO 2: Rotte ESCLUSIVE per Auto-Update
+// Queste rotte creano il bridge e scaricano file. Devono essere bloccate se config=false.
 Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
+    ->prefix('system/upgrade')
+    ->name('system.upgrade.')
+    ->group(function () {
+        Route::post('/launch', [SystemUpgradeController::class, 'launch'])->name('launch');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| System Upgrade Routes
+|--------------------------------------------------------------------------
+*/
+
+/* Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
     ->prefix('system/upgrade')
     ->name('system.upgrade.')
     ->group(function () {
@@ -128,7 +164,7 @@ Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
         Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
         Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
         Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
-    });
+    }); */
 
 /*
 |--------------------------------------------------------------------------

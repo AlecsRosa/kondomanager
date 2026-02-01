@@ -14,28 +14,29 @@ use Symfony\Component\HttpFoundation\Response;
 
 class CheckForPendingUpdates
 {
-    /**
-     * Verifica se ci sono aggiornamenti pending e reindirizza
-     */
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. BYPASS: Route di upgrade (evita loop infinito)
+        // 1. BYPASS: Route di upgrade
         if ($request->is('system/upgrade*')) {
             return $next($request);
         }
 
-        // 2. BYPASS: Solo amministratori vedono il check
+        // 2. BYPASS: Solo amministratori
         if (!Auth::check() || !Auth::user()->hasRole('amministratore')) {
             return $next($request);
         }
 
-        // 3. PERFORMANCE: Cache check per 5 minuti (evita query DB ripetute)
+        // 3. BYPASS: Se auto-update disabilitato, skip check
+        if (!$this->isAutoUpdateEnabled()) {
+            return $next($request);
+        }
+
+        // 4. Cache check
         $needsUpgrade = Cache::remember('system.needs_upgrade', 300, function () {
             return $this->checkIfUpgradeNeeded();
         });
 
         if ($needsUpgrade) {
-            // 4. PULISCI CACHE PRIMA DI REDIRECT (critico!)
             $this->clearConfigCache();
             
             Log::info('Pending upgrade detected - redirecting admin', [
@@ -50,19 +51,19 @@ class CheckForPendingUpdates
         return $next($request);
     }
 
-    /**
-     * Verifica se è necessario un upgrade
-     */
+    private function isAutoUpdateEnabled(): bool
+    {
+        return config('installer.run_installer', false) === true;
+    }
+
     private function checkIfUpgradeNeeded(): bool
     {
         try {
-            // 1. Verifica tabella settings esiste
             if (!Schema::hasTable('settings')) {
                 Log::warning('Settings table missing - upgrade needed');
                 return true;
             }
 
-            // 2. Verifica record version esiste
             $versionExists = DB::table('settings')
                 ->where('group', 'general')
                 ->where('name', 'version')
@@ -73,7 +74,6 @@ class CheckForPendingUpdates
                 return true;
             }
 
-            // 3. Carica settings con gestione errori
             try {
                 $settings = app(GeneralSettings::class);
             } catch (\Exception $e) {
@@ -83,7 +83,6 @@ class CheckForPendingUpdates
                 return true;
             }
 
-            // 4. Confronto semantico versioni
             $dbVersion = $settings->version ?? '0.0.0';
             $fileVersion = config('app.version');
 
@@ -103,7 +102,6 @@ class CheckForPendingUpdates
             return false;
 
         } catch (\Exception $e) {
-            // In caso di errore generico, assumiamo upgrade necessario
             Log::error('Upgrade check failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -113,9 +111,6 @@ class CheckForPendingUpdates
         }
     }
 
-    /**
-     * Pulisce cache configurazione
-     */
     private function clearConfigCache(): void
     {
         $configCache = base_path('bootstrap/cache/config.php');
@@ -132,9 +127,6 @@ class CheckForPendingUpdates
         }
     }
 
-    /**
-     * Helper: Ottieni versione DB (per logging)
-     */
     private function getDbVersion(): string
     {
         try {
