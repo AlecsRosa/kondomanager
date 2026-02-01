@@ -119,7 +119,7 @@ Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth', 'verified', 'role:amministratore'])
+Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
     ->prefix('system/upgrade')
     ->name('system.upgrade.')
     ->group(function () {

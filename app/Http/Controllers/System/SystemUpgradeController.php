@@ -10,14 +10,23 @@ use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Cache;
 
 class SystemUpgradeController extends Controller
 {
     /**
-     * DASHBOARD: Mostra stato attuale e aggiornamenti disponibili.
+     * Dashboard aggiornamenti
      */
     public function index(UpdateService $service)
     {
+        // GATE: Verifica se auto-update è abilitato
+        if (!$service->isAutoUpdateEnabled()) {
+            return Inertia::render('system/upgrade/Disabled', [
+                'reason' => 'manual_installation',
+                'message' => 'Gli aggiornamenti automatici non sono disponibili per installazioni manuali. Per aggiornare, segui la procedura manuale.'
+            ]);
+        }
+
         return Inertia::render('system/upgrade/Index', [
             'currentVersion' => config('app.version'),
             'availableRelease' => $service->checkRemoteVersion(),
@@ -26,117 +35,109 @@ class SystemUpgradeController extends Controller
     }
 
     /**
-     * LANCIO: Prepara il bridge, copia l'installer e reindirizza.
+     * Lancio aggiornamento
      */
     public function launch(UpdateService $service)
     {
+        // GATE: Verifica auto-update abilitato
+        if (!$service->isAutoUpdateEnabled()) {
+            return back()->withErrors([
+                'msg' => 'Gli aggiornamenti automatici non sono disponibili. Usa la procedura manuale.'
+            ]);
+        }
+
         $release = $service->checkRemoteVersion();
+        
         if (!$release) {
             return back()->withErrors(['msg' => 'Nessun aggiornamento disponibile.']);
         }
 
         try {
-            // Prepara il token e copia index.php nella root
             $bridge = $service->prepareForUpgrade($release);
             
             return Inertia::render('system/upgrade/Launch', [
-                'actionUrl' => url('/index.php'), // Punta all'installer appena copiato
+                'actionUrl' => url('/index.php'),
                 'token' => $bridge['token'],
                 'version' => $release['version']
             ]);
 
         } catch (\Exception $e) {
-            Log::error("Upgrade Launch Error: " . $e->getMessage());
+            Log::error('Upgrade launch failed', [
+                'error' => $e->getMessage(),
+                'version' => $release['version'] ?? 'unknown'
+            ]);
+            
             return back()->withErrors(['msg' => $e->getMessage()]);
         }
     }
 
     /**
-     * LANDING PAGE: Atterraggio dopo che l'installer ha finito (o l'utente è stato reindirizzato).
+     * Conferma post-aggiornamento
      */
     public function confirm(GeneralSettings $settings)
     {
-        // Rileggiamo la versione dal file config (che è stato appena sovrascritto dall'installer)
-        // vs la versione salvata nel DB (che è ancora vecchia)
         $dbVersion = $settings->version ?? '0.0.0';
         $fileVersion = config('app.version');
 
         return Inertia::render('system/upgrade/Confirm', [
             'currentVersion' => $dbVersion,
-            'newVersion'     => $fileVersion,
-            'needsUpgrade'   => version_compare($fileVersion, $dbVersion, '>'),
+            'newVersion' => $fileVersion,
+            'needsUpgrade' => version_compare($fileVersion, $dbVersion, '>'),
         ]);
     }
 
     /**
-     * ESECUZIONE FINALE: Migrazioni, Pulizia e Aggiornamento DB.
+     * Finalizzazione aggiornamento
      */
     public function run() 
     {
         try {
-            Log::info('Upgrade: Fase finale (DB & Cleanup) avviata.');
+            Log::info('Upgrade finalization started');
 
-            // 1. RETRY LOGIC MIGRAZIONI (Cruciale per Shared Hosting/Windows)
-            // Tenta 3 volte in caso di file lock sul database SQLite o MySQL busy
-            $attempts = 0;
-            while ($attempts < 3) {
-                try {
-                    Artisan::call('migrate', ['--force' => true]);
-                    break; // Successo
-                } catch (\Exception $e) {
-                    $attempts++;
-                    Log::warning("Migrazione fallita (tentativo $attempts): " . $e->getMessage());
-                    if ($attempts >= 3) throw $e; // Se fallisce 3 volte, errore reale
-                    sleep(2); // Attendi 2 secondi prima di riprovare
-                }
-            }
+            // 1. Migrazioni con retry logic
+            $this->runMigrationsWithRetry();
             
-            // 2. AGGIORNAMENTO VERSIONE NEL DB
+            // 2. Aggiornamento versione DB
             $settings = app(GeneralSettings::class);
             $settings->version = config('app.version');
             $settings->save();
 
-            // 3. PULIZIA CACHE & OTTIMIZZAZIONE
+            // 3. Cache clearing
             Artisan::call('optimize:clear'); 
             Artisan::call('view:clear');
             Artisan::call('route:clear');
 
-            // 4. STORAGE LINK NATIVO (Fix per Shared Hosting)
-            // Artisan::call('storage:link') spesso fallisce su cPanel. Usiamo PHP nativo.
-            $target = storage_path('app/public');
-            $link = public_path('storage');
+            // 4. INVALIDA CACHE MIDDLEWARE
+            Cache::forget('system.needs_upgrade');
+            Log::info('Upgrade middleware cache invalidated');
 
-            if (!file_exists($link)) {
-                if (!@symlink($target, $link)) {
-                    Log::warning('Impossibile creare symlink storage nativo. Verificare permessi.');
-                }
-            }
+            // 4. Storage link
+            $this->ensureStorageLink();
 
-            // 5. PULIZIA JUNK INSTALLER
-            // Se l'installer non è riuscito a cancellarsi ma si è svuotato (Junk Mode), lo eliminiamo ora.
-            $installerPath = base_path('index.php');
-            if (file_exists($installerPath)) {
-                $content = @file_get_contents($installerPath);
-                // Cancella solo se è il nostro file junk o un file vuoto
-                if (strpos($content, '410 Gone') !== false || strlen($content) < 100) {
-                    @unlink($installerPath);
-                    Log::info('Cleanup: Installer residuo rimosso.');
-                }
-            }
-
-            // 6. PULIZIA VECCHI BACKUP
+            // 5. Cleanup
+            $this->cleanupInstallerJunk();
             $this->cleanupOldBackups();
 
-            return Redirect::route('system.upgrade.changelog')->with('success', 'Sistema aggiornato con successo!');
+            Log::info('Upgrade completed successfully', [
+                'version' => config('app.version')
+            ]);
+
+            return Redirect::route('system.upgrade.changelog')
+                ->with('success', 'Sistema aggiornato con successo!');
 
         } catch (\Exception $e) {
-            Log::error('Upgrade Finalize Error: ' . $e->getMessage());
-            return Redirect::back()->withErrors(['msg' => 'Errore durante la finalizzazione: ' . $e->getMessage()]);
+            Log::error('Upgrade finalization failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return Redirect::back()
+                ->withErrors(['msg' => 'Errore durante la finalizzazione: ' . $e->getMessage()]);
         }
     }
 
     /**
-     * MOSTRA CHANGELOG
+     * Changelog
      */
     public function showChangelog(GeneralSettings $settings)
     {
@@ -146,8 +147,68 @@ class SystemUpgradeController extends Controller
     }
 
     /**
-     * HELPER: Carica il changelog JSON
+     * HELPERS
      */
+    
+    private function runMigrationsWithRetry(int $maxAttempts = 3): void
+    {
+        $attempts = 0;
+        
+        while ($attempts < $maxAttempts) {
+            try {
+                Artisan::call('migrate', ['--force' => true]);
+                Log::info("Migrations completed on attempt " . ($attempts + 1));
+                return;
+                
+            } catch (\Exception $e) {
+                $attempts++;
+                
+                if ($attempts >= $maxAttempts) {
+                    throw new \Exception("Migration failed after {$maxAttempts} attempts: " . $e->getMessage());
+                }
+                
+                Log::warning("Migration attempt {$attempts} failed, retrying...", [
+                    'error' => $e->getMessage()
+                ]);
+                
+                sleep(2);
+            }
+        }
+    }
+
+    private function ensureStorageLink(): void
+    {
+        $target = storage_path('app/public');
+        $link = public_path('storage');
+
+        if (!file_exists($link)) {
+            if (@symlink($target, $link)) {
+                Log::info('Storage symlink created');
+            } else {
+                Log::warning('Failed to create storage symlink - check permissions');
+            }
+        }
+    }
+
+    private function cleanupInstallerJunk(): void
+    {
+        $paths = [
+            base_path('index.php'),
+            public_path('index.php')
+        ];
+
+        foreach ($paths as $path) {
+            if (file_exists($path)) {
+                $content = @file_get_contents($path);
+                // Cerca la firma del bridge o il comando di autodistruzione
+                if (strpos($content, '410 Gone') !== false || strpos($content, 'Bridge-Only') !== false) {
+                    @unlink($path);
+                    Log::info('Installer junk removed: ' . $path);
+                }
+            }
+        }
+    }
+
     private function getChangelog(GeneralSettings $settings): array
     {
         $version = config('app.version');
@@ -156,14 +217,13 @@ class SystemUpgradeController extends Controller
         $path = resource_path("data/changelogs/{$lang}/{$version}.json");
 
         if (!file_exists($path)) {
-            // Fallback italiano
             $path = resource_path("data/changelogs/it/{$version}.json");
         }
 
         if (!file_exists($path)) {
             return [
-                'date'     => date('d/m/Y'), 
-                'version'  => $version,   
+                'date' => date('d/m/Y'), 
+                'version' => $version,   
                 'features' => ['Aggiornamento di sistema completato.'],
             ];
         }
@@ -171,22 +231,20 @@ class SystemUpgradeController extends Controller
         return json_decode(file_get_contents($path), true) ?? [];
     }
 
-    /**
-     * HELPER: Rimuove i backup vecchi di 24 ore
-     */
-    private function cleanupOldBackups()
+    private function cleanupOldBackups(): void
     {
         try {
-            $backups = glob(base_path('_km_safe_zone*')); // Cerca sia la cartella base che eventuali timestamp
+            $backups = glob(base_path('_km_safe_zone*'));
+            
             foreach ($backups as $dir) {
-                if (is_dir($dir) && (time() - filemtime($dir) > 86400)) { // 24 ore
+                if (is_dir($dir) && (time() - filemtime($dir) > 86400)) {
                     File::deleteDirectory($dir);
-                    Log::info("Cleanup: Rimosso backup vecchio: " . basename($dir));
+                    Log::info('Old backup removed', ['path' => basename($dir)]);
                 }
             }
+            
         } catch (\Exception $e) {
-            // Non bloccare l'aggiornamento per questo
-            Log::warning("Cleanup Error: " . $e->getMessage());
+            Log::warning('Backup cleanup failed', ['error' => $e->getMessage()]);
         }
     }
 }
