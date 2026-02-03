@@ -20,6 +20,7 @@ use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
+use App\Traits\CalculatesFinancialWaterfall; // <--- IL NUOVO TRAIT
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -35,6 +36,7 @@ use Illuminate\Support\Facades\DB;
 class EventoController extends Controller
 {
     use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
+    use CalculatesFinancialWaterfall; // <--- ATTIVAZIONE TRAIT
 
     public function __construct(
         private RecurrenceService $recurrenceService,
@@ -46,18 +48,19 @@ class EventoController extends Controller
      */
     public function index(EventoIndexRequest $request, Evento $evento): Response
     {
-
         Gate::authorize('view', $evento);
 
         $validated = $request->validated();
 
-        $perPage = min((int) ($validated['per_page'] ?? 10), 100);
+        // Ho rimosso il dd('test'); qui
+
+        $perPage = min((int) ($validated['per_page'] ?? config('pagination.default_per_page')), 100);
         $page = (int) ($validated['page'] ?? 1);
 
         try {
-
             $userData = $this->getUserCondominioData();
 
+            // 1. Recuperiamo gli eventi dal servizio ricorrenze
             $events = $this->recurrenceService->getEventsInNextDays(
                 days: 360,
                 filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
@@ -67,11 +70,19 @@ class EventoController extends Controller
                 condominioIds: $userData->condominioIds
             );
 
-        } catch (\Exception $e) {
+            // 2. 🔥 APPLICAZIONE WATERFALL (Tramite Trait) 🔥
+            // Questa chiamata ora usa la funzione condivisa nel file App\Traits\CalculatesFinancialWaterfall.php
+            $processedCollection = $this->applyFinancialWaterfall(
+                $events->getCollection(), 
+                $userData->anagrafica->id
+            );
+            
+            // Reinseriamo i dati processati nel paginator
+            $events->setCollection($processedCollection);
 
+        } catch (\Exception $e) {
             Log::error('Error getting user events: ' . $e->getMessage());
             abort(500, 'Unable to fetch reports.');
-
         }
 
         return Inertia::render('eventi/user/EventiList', [
@@ -178,42 +189,26 @@ class EventoController extends Controller
             DB::commit();
 
             if($validated['is_approved']){
-
                 return to_route('user.eventi.index')->with(
                     $this->flashSuccess(__('eventi.success_create_event'))
                 );
-
             }else{
-
                 return to_route('user.eventi.index')->with(
                     $this->flashInfo(__('eventi.success_create_event_in_moderation'))
                 );
-
             }
 
         } catch (\Exception $e) {
-
             DB::rollBack();
-
             Log::error('Error creating agenda event: ' . $e->getMessage());
-
             return to_route('user.eventi.index')->with(
                 $this->flashError(__('eventi.error_create_event'))
             );
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
+    public function show(string $id) {}
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Evento $evento, Request $request): Response
     {
         Gate::authorize('update', $evento);
@@ -240,9 +235,6 @@ class EventoController extends Controller
         ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(EditEventoRequest $request, Evento $evento): RedirectResponse
     {
         Gate::authorize('update', $evento);
@@ -294,21 +286,14 @@ class EventoController extends Controller
             );
 
         } catch (\Exception $e) {
-
             DB::rollBack();
-
             Log::error("Event update failed: {$e->getMessage()}");
-
             return back()->with(
                 $this->flashError(__('eventi.error_update_event'))
             );
-
         }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Request $request, Evento $evento): RedirectResponse
     {
         Gate::authorize('delete', $evento);
@@ -316,25 +301,19 @@ class EventoController extends Controller
         $mode = $request->input('mode', 'only_this'); 
 
         if (!$evento->recurrence_id) {
-            // One-time event — just delete it
             $evento->delete();
-
             return back()->with(
                 $this->flashSuccess(__('eventi.success_delete_event'))
             );
-
         }
 
-        // 🔹 Recurring event
         $occurrenceDate = $request->input('occurrence_date');
 
-        // Validate occurrenceDate once for relevant modes
         if (in_array($mode, ['only_this', 'this_and_future']) && !$occurrenceDate) {
             abort(400, 'Missing occurrence_date for recurring event.');
         }
 
         switch ($mode) {
-            
             case 'only_this':
                 EccezioneEvento::create([
                     'recurrence_id'  => $evento->recurrence_id,
@@ -348,27 +327,15 @@ class EventoController extends Controller
             case 'this_and_future':
                 DB::transaction(function () use ($evento, $occurrenceDate) {
                     $ricorrenza = $evento->ricorrenza;
-
-                    if (!$ricorrenza) {
-                        abort(400, 'No recurrence rule found for this event.');
-                    }
+                    if (!$ricorrenza) abort(400, 'No recurrence rule found for this event.');
 
                     $timezone = new \DateTimeZone(config('app.timezone') ?? 'UTC');
                     $occurrence = new \DateTime($occurrenceDate, $timezone);
-
                     $cutoff = (clone $occurrence)->modify('-1 second');
                     $eventStart = new \DateTime($evento->start_time, $timezone);
-                    if ($cutoff < $eventStart) {
-                        $cutoff = clone $eventStart;
-                    }
+                    if ($cutoff < $eventStart) $cutoff = clone $eventStart;
 
-                    // Adjust recurrence rule to end before the cutoff date
-                    $oldRule = new \Recurr\Rule(
-                        $ricorrenza->rrule,
-                        $eventStart,
-                        null,
-                        config('app.timezone')
-                    );
+                    $oldRule = new \Recurr\Rule($ricorrenza->rrule, $eventStart, null, config('app.timezone'));
                     $oldRule->setUntil($cutoff);
 
                     $ricorrenza->update([
@@ -376,16 +343,12 @@ class EventoController extends Controller
                         'rrule' => $oldRule->getString(),
                     ]);
 
-                    // Delete future event occurrences starting from the cutoff date
                     Evento::where('recurrence_id', $evento->recurrence_id)
                         ->where('start_time', '>=', $occurrence->format('Y-m-d H:i:s'))
                         ->delete();
 
-                    // Check if any events remain linked to this recurrence
                     $remainingEvents = Evento::where('recurrence_id', $evento->recurrence_id)->count();
-
                     if ($remainingEvents === 0) {
-                        // No events left, delete recurrence rule and exceptions
                         $ricorrenza->delete();
                         EccezioneEvento::where('recurrence_id', $evento->recurrence_id)->delete();
                     }
@@ -394,7 +357,6 @@ class EventoController extends Controller
 
             case 'all':
                 DB::transaction(function () use ($evento) {
-                    // Delete all events linked to recurrence, recurrence rule, and exceptions
                     Evento::where('recurrence_id', $evento->recurrence_id)->delete();
                     $evento->ricorrenza()->delete();
                     EccezioneEvento::where('recurrence_id', $evento->recurrence_id)->delete();

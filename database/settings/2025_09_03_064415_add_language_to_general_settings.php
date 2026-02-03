@@ -8,4 +8,9 @@ return new class extends SettingsMigration
     {
         $this->migrator->add('general.language', 'it');
     }
+
+    public function down(): void
+    {
+        $this->migrator->delete('general.language');
+    }
 };

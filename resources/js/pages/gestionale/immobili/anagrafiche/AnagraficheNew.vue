@@ -17,6 +17,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
+import { unformat } from 'v-money3';
 import MoneyInput from '@/components/MoneyInput.vue'
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
@@ -36,7 +37,7 @@ const moneyOptions = ref({
   thousands: '.',          
   decimal: ',',          
   precision: 2, 
-  allowNegative: true,           
+  disableNegative: false,        
   allowBlank: false,
   masked: true 
 })
@@ -76,6 +77,27 @@ const form = useForm({
   note: '',
   anagrafica_id: '',
 
+});
+
+const statoSaldo = computed(() => {
+    // 1. Puliamo il valore da punti e virgole per capire il numero reale
+    // Nota: usa le stesse moneyOptions che passo al componente
+    const rawValue = unformat(form.saldo_iniziale, moneyOptions.value); 
+    const value = Number(rawValue);
+
+    if (value === 0) return null;
+
+    if (value > 0) {
+        return {
+            label: 'A DEBITO (Deve ancora versare)',
+            color: 'text-red-600',
+        };
+    } else {
+        return {
+            label: 'A CREDITO (Ha versato in eccedenza)',
+            color: 'text-green-600',
+        };
+    }
 });
 
 const submit = () => {
@@ -141,28 +163,68 @@ const submit = () => {
                 </div>
 
                 <div class="sm:col-span-3">
-                  <Label for="tipologia">Anagrafica</Label>
+                  <div class="flex items-center gap-1 mb-2">
+                    <Label for="anagrafica_id">Anagrafica</Label>
+                    
+                    <HoverCard>
+                      <HoverCardTrigger as-child>
+                        <button type="button" class="cursor-pointer flex items-center">
+                          <Info class="w-4 h-4 text-muted-foreground hover:text-primary transition-colors" />
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent class="w-80 z-50">
+                        <div class="space-y-3">
+                          <h4 class="text-sm font-semibold flex items-center gap-2">
+                            <Info class="w-4 h-4" /> Chi visualizzi qui?
+                          </h4>
+                          <div class="text-sm space-y-2 text-muted-foreground">
+                            <p>
+                              L'elenco mostra solo le anagrafiche che:
+                            </p>
+                            <ul class="list-disc pl-4 space-y-1">
+                              <li>Sono registrate in <strong>questo Condominio</strong>.</li>
+                              <li>NON sono ancora state associate a <strong>questo Immobile</strong>.</li>
+                            </ul>
+                            <Separator class="my-2"/>
+                            
+                            <div class="text-xs leading-relaxed">
+                              <span class="font-semibold text-foreground">Non trovi la persona?</span><br>
+                              Vai alla
+                              <Link 
+                                :href="generatePath('anagrafiche')" 
+                                class="text-primary font-medium hover:underline hover:text-primary/80 transition-colors inline-flex items-center gap-0.5"
+                              >
+                                gestione anagrafiche
+                              </Link>
+                              per crearla, poi torna qui.
+                            </div>
+
+                          </div>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
                   <v-select
+                    id="anagrafica_id"
                     class="w-full"
                     :options="anagrafiche"
                     v-model="form.anagrafica_id"
                     :reduce="(d: Anagrafica) => d.id"
                     label="nome"
-                    placeholder="Seleziona anagrafica"
+                    placeholder="Cerca o seleziona anagrafica"
                   >
-                    <!-- Dropdown options: stacked layout -->
                     <template #option="{ nome, indirizzo }">
-                      <div class="flex flex-col">
-                        <span class="font-medium">{{ nome }}</span>
-                        <span class="text-sm text-gray-500">{{ indirizzo }}</span>
+                      <div class="flex flex-col py-1">
+                        <span class="font-medium text-sm">{{ nome }}</span>
+                        <span class="text-xs text-muted-foreground">{{ indirizzo }}</span>
                       </div>
                     </template>
 
-                    <!-- Selected option: single-line layout -->
                     <template #selected-option="{ nome, indirizzo }">
-                      <div class="flex items-center gap-2">
+                      <div class="flex items-center gap-2 text-sm">
                         <span class="font-medium">{{ nome }}</span>
-                        <span class="text-gray-500 text-sm">– {{ indirizzo }}</span>
+                        <span class="text-muted-foreground" v-if="indirizzo">– {{ indirizzo }}</span>
                       </div>
                     </template>
                   </v-select>
@@ -177,23 +239,24 @@ const submit = () => {
                 <div class="sm:col-span-3">
                   <Label for="quota">Quota</Label>
 
-                    <HoverCard>
-                      <HoverCardTrigger as-child>
-                        <button type="button" class="cursor-pointer">
-                          <Info class="ml-1 w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent class="w-80 z-50">
-                        <div class="flex justify-between space-x-4">
-                          <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">Quota anagrafica</h4>
-                            <p class="text-sm">
-                             In questo campo puoi inserire la quota di proprietà dell'anagrafica
-                            </p>
-                          </div>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="flex justify-between space-x-4">
+                        <div class="space-y-1">
+                          <h4 class="text-sm font-semibold">Quota anagrafica</h4>
+                          <p class="text-sm">
+                            In questo campo puoi inserire la quota di proprietà dell'anagrafica
+                          </p>
                         </div>
-                      </HoverCardContent>
-                    </HoverCard>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                  
                   <Input
                     id="quota" 
                     placeholder="Quota anagrafica" 
@@ -205,7 +268,7 @@ const submit = () => {
                 </div>
 
                 <div class="sm:col-span-3">
-                  <Label for="saldo">Saldo iniziale</Label>
+                  <Label for="saldo">Saldo esercizio precedente</Label>
 
                   <HoverCard>
                     <HoverCardTrigger as-child>
@@ -214,11 +277,17 @@ const submit = () => {
                       </button>
                     </HoverCardTrigger>
                     <HoverCardContent class="w-80 z-50">
-                      <div class="flex justify-between space-x-4">
-                        <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Saldo iniziale</h4>
-                          <p class="text-sm">
-                            In questo campo puoi impostare il saldo iniziale dell'anagrafica, per registrare un saldo negativo inserisci il segno - prima del valore numerico, se il saldo è positivo non è necessario inserire il segno +
+                      <div class="space-y-2">
+                        <h4 class="text-sm font-semibold">Guida al Saldo</h4>
+                        <div class="text-sm space-y-2">
+                          <p>
+                            <span class="font-bold text-red-600">Valore Positivo:</span><br>
+                            Indica un <strong>Debito</strong>. L'anagrafica non ha saldato tutto l'anno precedente.
+                          </p>
+                          <div class="border-t my-2"></div>
+                          <p>
+                            <span class="font-bold text-green-600">Valore Negativo (col meno -):</span><br>
+                            Indica un <strong>Credito</strong>. L'anagrafica ha pagato più del dovuto l'anno scorso.
                           </p>
                         </div>
                       </div>
@@ -226,18 +295,22 @@ const submit = () => {
                   </HoverCard>
 
                   <MoneyInput
-                    id="importo"
+                    id="saldo"
                     v-model="form.saldo_iniziale"
                     :money-options="moneyOptions"
-                    :lazy="true" 
                     placeholder="0,00"
                     @focus="form.clearErrors('saldo_iniziale')"
                   />
 
                   <InputError :message="form.errors.saldo_iniziale" />
-                  <p class="text-xs text-gray-500 mt-1">
-                    Inserisci l'importo nel formato italiano (es. 1.234,56)
-                    <strong>Per saldo negativo, usa il segno -</strong>
+
+                  <div v-if="statoSaldo" 
+                      :class="['mt-2 text-xs font-medium transition-all', statoSaldo.color]">
+                      {{ statoSaldo.label }}
+                  </div>
+
+                  <p v-else class="text-xs text-muted-foreground mt-1">
+                    Usa il segno <strong>-</strong> (meno) per i crediti a favore dell'anagrafica.
                   </p>
                 </div>
 

@@ -2,11 +2,19 @@
 [![it](https://img.shields.io/badge/lang-it-green.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.md)
 [![pt-br](https://img.shields.io/badge/lang-pt--br-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt-br.md)
 
-# KondoManager - Gestione condominiale
+[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.en.md)
+[![it](https://img.shields.io/badge/lang-it-green.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.md)
+[![pt-br](https://img.shields.io/badge/lang-pt--br-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt-br.md)
+[![Generic badge](https://img.shields.io/badge/Version-1.8.0_Beta.2-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 
-KondoManager è un innovativo software open source per la gestione condominiale, realizzato in Laravel e database MySQL, pensato per gli amministratori di condominio ma anche per gli utenti del condominio.
+# KondoManager - Software gratuito e open source per la gestione condominiale
 
-## Screenshots
+**KondoManager** è un innovativo software gratuito e open source per la gestione condominiale, realizzato in **Laravel** e database **MySQL**. È pensato per semplificare la vita degli amministratori di condominio, offrendo al contempo trasparenza e servizi digitali ai condòmini.
+
+---
+
+## 📸 Screenshots
 
 <table>
   <tr>
@@ -23,176 +31,226 @@ KondoManager è un innovativo software open source per la gestione condominiale,
   </tr>
 </table>
 
-## Prova la demo di KondoManager
-Puoi visualizzare una demo del progetto andando al seguente indirizzo [KondoManager Demo](https://rebrand.ly/kondomanager) 
+---
 
-Attenzione per questioni di sicurezza alcune funzionalità sono state disattivate, puoi accedere con le seguenti credenziali:
+## 🌐 Prova la demo
 
-```
-Accedi come amministratore:
-email: admin@kondomanager.it
-password: Pa$$w0rd!
+Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 
-Accedi come utente:
-email: user@kondomanager.it
-password: Pa$$w0rd!
-```
+👉 **[KondoManager Demo](https://rebrand.ly/kondomanager)**
 
-## Funzionalità del gestionale
+> ⚠️ **Nota:** Per questioni di sicurezza alcune funzionalità (scrittura su filesystem, invio email) sono state disattivate.
 
-- Gestione dei condomini
-- Gestione delle anagrafiche
-- Gestione delle segnalazioni guasto
-- Gestione della bacheca condominiale
-- Gestione dell'archivio documenti e categorie
-- Gestione delle scadenze in agenda
-- Gestione degli utenti
-- Gestione dei ruoli e permessi
-- Notifiche email
-- Gestionale
-  - Gestione palazzine
-  - Gestione scale
-  - Gestione immobili
-  - Tabelle millesimali
-  - Gestione esercizi
-  - Gestioni ordinarie e straordinarie
-  - Creazione piano dei conti (preventivo spesa)
-  - Creazione piano rate
+**Credenziali di accesso:**
 
-## Requisiti minimi 
+| Ruolo | Email | Password |
+| :--- | :--- | :--- |
+| **Amministratore** | `admin@kondomanager.it` | `Pa$$w0rd!` |
+| **Utente** | `user@kondomanager.it` | `Pa$$w0rd!` |
 
-    PHP >= 8.2
-    Database MySQL
-    Node.js & NPM (Per installazione manuale)
-    Composer (Per installazione manuale)
+---
 
-## Installazione guidata del gestionale
+## ✨ Funzionalità del gestionale
 
-Per gli utenti meno esperti e che volessero installare Kondomanager su server condiviso, abbiamo creato un wizard guidato per il processo di installazione
-Scarica il [file di installazione](https://kondomanager.short.gy/installer) e carica il file index.php sul tuo server, quindi segui il processo di installazione guidato, per maggiori informazioni visita la pagina della [guida ufficiale](https://www.kondomanager.com/docs/installation.html) 
+### Funzioni core
 
-## Installazione manuale del gestionale
+- **Sistema di aggiornamento automatico (Universal Diamond 💎)**
+- Gestione anagrafiche condomini
+- Gestione segnalazioni guasti (ticket system)
+- Bacheca condominiale digitale
+- Archivio documenti e categorie
+- Agenda scadenze condivisa
+- Gestione avanzata utenti, ruoli e permessi
+- Notifiche email automatiche
 
-1. Clona la repository
+### Modulo contabilità e struttura
 
+- Gestione palazzine, scale e immobili
+- Tabelle millesimali illimitate
+- Gestione esercizi contabili
+- Gestioni ordinarie e straordinarie
+- Creazione piano dei conti (preventivo spesa)
+- Generazione piano rateale
+
+---
+
+## ⚙️ Requisiti minimi
+
+Per installare KondoManager, il tuo ambiente server deve soddisfare i seguenti requisiti:
+
+- **PHP** >= 8.2
+- **Database:** MySQL 5.7+ o MariaDB 10.3+
+- **Estensioni PHP:** `zip`, `curl`, `openssl`, `mbstring`, `fileinfo`, `dom`, `xml`
+- **Per installazione manuale:** Node.js & NPM, Composer
+
+---
+
+## 🚀 Installazione guidata (Consigliata per Hosting)
+
+Per gli utenti meno esperti o per installazioni veloci su hosting condivisi (cPanel, Plesk, ecc.), abbiamo creato un wizard automatizzato.
+
+### 1. Nuova installazione
+
+1. Scarica il [file di installazione](https://kondomanager.short.gy/installer).
+2. Carica il file `index.php` nella **root** del tuo server (via FTP o File Manager).
+3. Apri il browser all'indirizzo: `https://tuosito.com/index.php`.
+4. Segui la procedura guidata a schermo.
+
+Per maggiori dettagli, visita la [guida ufficiale all'installazione](https://www.kondomanager.com/docs/installation.html).
+
+### 2. Aggiornamento automatico (Universal diamond)
+
+Il sistema **Universal Diamond** gestisce automaticamente il ciclo di vita degli aggiornamenti, garantendo la sicurezza dei dati.
+
+1. Scarica il [file di aggiornamento](https://kondomanager.short.gy/installer).
+2. Carica il file `index.php` nella root del tuo server (**sovrascrivendo** se necessario).
+3. Apri il browser all'indirizzo: `https://tuosito.com/index.php`.
+4. Il sistema rileverà automaticamente la versione precedente installata.
+5. Clicca su **"Aggiorna alla v1.8beta2"** (o versione successiva disponibile).
+
+**Cosa fa il sistema automaticamente:**
+
+- ✅ Backup automatico di `.env`, cartella `storage` e `uploads`.
+- ✅ Scaricamento e installazione dei nuovi file core.
+- ✅ Ripristino dei dati e delle configurazioni.
+- ✅ Esecuzione delle migrazioni del database.
+- ✅ Pulizia e ottimizzazione cache.
+
+> ⚠️ **IMPORTANTE:** Non chiudere la pagina del browser durante il processo di aggiornamento. Il file `index.php` si auto-eliminerà al termine dell'operazione per sicurezza.
+
+---
+
+## 🔧 Installazione manuale (Per sviluppatori)
+
+Se desideri contribuire al codice o hai accesso SSH completo al server.
+
+### Prima installazione
+
+1. **Clona la repository**
 ```bash
-https://github.com/vince844/kondomanager-free.git
+git clone https://github.com/vince844/kondomanager-free.git
+cd kondomanager-free
 ```
 
-2. Installa librerie
-
+2. **Installa le dipendenze**
 ```bash
 composer install
 npm install
 ```
 
-3. Genera il file .env
-
+3. **Configura l'ambiente**
 ```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-4. Configura il database MySql nel file .env
+Modifica il file `.env` inserendo i parametri del tuo database (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`).
 
-```bash
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=your_database
-DB_USERNAME=your_username
-DB_PASSWORD=your_password
-```
-5. Configura il server SMTP nel file .env
-
-```bash
-MAIL_MAILER=smtp
-MAIL_SCHEME=null
-MAIL_HOST=
-MAIL_PORT=
-MAIL_USERNAME=
-MAIL_PASSWORD=
-MAIL_FROM_ADDRESS=
-MAIL_FROM_NAME="${APP_NAME}"
-```
-
-6. Esegui le migrazioni del database
-
+4. **Setup Database**
 ```bash
 php artisan migrate
-```
-
-7. Popola il database con le configurazioni di default
-
-```bash
 php artisan db:seed
 ```
 
-8. Avvia i server di sviluppo
-
+5. **Avvia**
 ```bash
 npm run dev
 php artisan serve
 ```
 
-🎉 That's it! Visita http://localhost:8000 per iniziare a lavorare con KondoManager.
+Visita http://localhost:8000.
 
-Se necessario configura APP_URL nel file .env specificando la porta
+**Credenziali Default:** `admin@km.com` / `password` (Ricorda di cambiarle subito su `/settings/profile`).
 
+### Aggiornamento Manuale (via SSH/Terminale)
+
+Se preferisci aggiornare manualmente, segui rigorosamente questi passaggi per garantire la compatibilità con il sistema di versioning:
+
+1. **Backup Database (Raccomandato)**
 ```bash
-APP_URL=http://localhost:8000
+mysqldump -u username -p database_name > backup_$(date +%Y%m%d).sql
 ```
 
-Per accedere al pannello di amministrazione usa le seguenti credenziali:
-
+2. **Aggiorna Codice e Dipendenze**
 ```bash
-Indirizzo email: admin@km.com
-Password: password
+git pull origin main
+composer install --no-dev --optimize-autoloader
+npm install && npm run build
 ```
 
-Ricordati di modificare l'indirizzo email e la password al primo login andando all'indirizzo /settings/profile
+3. **🔥 PASSAGGIO CRITICO 🔥**
 
-## Documenti utili
+È fondamentale pulire la cache delle configurazioni prima di migrare, specialmente per il nuovo sistema di versioning settings:
+```bash
+php artisan config:clear
+```
+
+4. **Migrazione e Ottimizzazione**
+```bash
+php artisan migrate --force
+php artisan optimize:clear
+php artisan storage:link
+```
+
+### Verifica Versione Installata
+
+Puoi verificare la versione corrente e il funzionamento delle configurazioni tramite Tinker:
+```bash
+php artisan tinker
+>>> config('app.version')
+```
+
+---
+
+## 📚 Documenti utili
 
 - [Laravel Documentation](https://laravel.com/docs)
 - [Vue.js Documentation](https://vuejs.org/guide/introduction.html)
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 - [Inertia.js Documentation](https://inertiajs.com/)
-- [TanStack Table Documentation](https://tanstack.com/table/v8)
+- [Spatie Laravel Settings](https://spatie.be/docs/laravel-settings)
 
-## Come contribuire al progetto
+---
 
-Chi volesse contribuire a far crescre il progetto è sempre il benvenuto!
+## 🤝 Come contribuire
 
-Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING).
+Chi volesse contribuire a far crescere il progetto è sempre il benvenuto!
 
-Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issue](https://github.com/vince844/kondomanager-free/issues).
+Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte.
 
-## Sostieni il progetto
+---
 
-Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto. [Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
+## ❤️ Sostieni il progetto
 
-## Feedback
+Sviluppare un software open source richiede molto impegno e dedizione. Ti sarò grato se deciderai di sostenere il progetto.
 
-Per chi volesse inviare dei feedback o consigli su moglioramenti può farlo nell'apposita sezione all'interno di questa repository oppure aprire un [ticket su uservoice](https://feedback.userreport.com/92d7d7e1-d2e5-4654-a90d-066dd5d2fe10/#ideas/popular)
+👉 [Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
 
-## Supporto
+---
 
-Per supporto o richieste di personalizzazione del codice, potete contattarmi utlizzando l'apposito [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) 
+## 💬 Feedback & Supporto
 
-## Licenza
+- **Feedback:** Usa la sezione "Issues" o "Discussions" di questa repository.
+- **Supporto:** Per richieste di personalizzazione o supporto dedicato, usa il [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) sul sito ufficiale.
 
-[AGPL-3.0](https://github.com/vince844/kondomanager-free?tab=AGPL-3.0-1-ov-file#readme)
+---
 
-## Credits
+## 📜 Licenza
 
-### Lead Developer
+Questo progetto è rilasciato sotto licenza [AGPL-3.0](https://github.com/vince844/kondomanager-free?tab=AGPL-3.0-1-ov-file#readme).
+
+---
+
+## 🏆 Credits
+
+### Lead Developer:
 - **Vincenzo Vecchio** - Project founder and main developer
 
-### Contributors
-
-Thanks to these amazing people who have contributed to this project:
-
+### Contributors:
 - [Amnit Haldar](https://github.com/amit-eiitech) - Amazing laravel developer
+- Tutti i contributori della community open source.
 
+---
+
+**Versione corrente:** 1.8.0-beta.2 | **Sistema di aggiornamento:** Universal Diamond 
 

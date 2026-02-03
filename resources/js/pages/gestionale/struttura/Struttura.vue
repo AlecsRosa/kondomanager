@@ -25,10 +25,6 @@ const breadcrumbs = computed(() => [
   { title: 'dettagli condominio', href: '#' },
 ]);
 
-const truncate = (text: string, length: number = 120) => {
-  return text.length > length ? `${text.slice(0, length)}...` : text;
-};
-
 </script>
 
 <template>
@@ -48,7 +44,7 @@ const truncate = (text: string, length: number = 120) => {
           <!-- Left block -->
           <div class="space-y-6 pr-6 border-r">
             <div class="border-b pb-2 mb-8">
-              <h3 class="text-lg font-bold capitalize">{{condominio.nome}}</h3>
+              <h3 class="text-lg font-bold">{{condominio.nome}}</h3>
               <p class="text-muted-foreground text-sm ">
                 Di seguito i dettagli registrati per il condominio {{ condominio.nome }}
               </p> 

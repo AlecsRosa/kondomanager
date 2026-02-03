@@ -8,4 +8,9 @@ return new class extends SettingsMigration
     {
         $this->migrator->add('general.user_frontend_registration', false);
     }
+
+    public function down(): void
+    {
+        $this->migrator->delete('general.user_frontend_registration');
+    }
 };

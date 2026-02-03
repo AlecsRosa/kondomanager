@@ -2,6 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HardDrive, FileText, Calendar, Calculator } from 'lucide-vue-next';
+import { formatBytes, formatNumber } from '@/utils/formatBytes'; 
+import { trans } from 'laravel-vue-i18n';
 
 defineProps<{
   stats: {
@@ -12,36 +14,26 @@ defineProps<{
   }
 }>();
 
-// Helper to format bytes automatically to B, KB, MB, GB, TB
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const size = (bytes / Math.pow(k, i)).toFixed(2);
-  return `${size} ${sizes[i]}`;
-}
-
 const displayStats = {
   total_storage_bytes: {
-    title: 'Spazio totale utilizzato',
+    title: 'documenti.stats.total_storage_bytes',
     icon: HardDrive,
-    format: formatBytes,
+    format: (val: number) => formatBytes(val, undefined, true), 
   },
   total_documents: {
-    title: 'Documenti totali',
+    title: 'documenti.stats.total_documents',
     icon: FileText,
-    format: (val: number) => val.toString(),
+    format: (val: number) => formatNumber(val), 
   },
   uploaded_this_month: {
-    title: 'Caricati questo mese',
+    title: 'documenti.stats.uploaded_this_month',
     icon: Calendar,
-    format: (val: number) => val.toString(),
+    format: (val: number) => formatNumber(val), 
   },
   average_size_bytes: {
-    title: 'Dimensione media documento',
+    title: 'documenti.stats.average_size_bytes',
     icon: Calculator,
-    format: formatBytes,
+    format: (val: number) => formatBytes(val, undefined, true), 
   }
 };
 </script>
@@ -51,13 +43,13 @@ const displayStats = {
     <Card v-for="(stat, key) in displayStats" :key="key">
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-sm font-medium">
-          {{ stat.title }}
+          {{ trans(stat.title) }}
         </CardTitle>
         <component :is="stat.icon" class="w-5 h-5 text-muted-foreground" />
       </CardHeader>
       <CardContent>
         <div class="text-2xl font-bold">
-          {{ stat.format(stats[key]) || 0 }}
+          {{ stat.format(stats[key]) }}
         </div>
       </CardContent>
     </Card>

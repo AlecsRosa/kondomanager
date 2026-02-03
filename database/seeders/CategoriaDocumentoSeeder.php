@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\CategoriaDocumento;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class CategoriaDocumentoSeeder extends Seeder
@@ -13,6 +12,7 @@ class CategoriaDocumentoSeeder extends Seeder
      */
     public function run(): void
     {
+        
         $categorie = [
             ['name' => 'Bilanci', 'description' => 'Documenti relativi ai bilanci economici'],
             ['name' => 'Verbali', 'description' => 'Verbali delle assemblee e riunioni'],
@@ -21,7 +21,11 @@ class CategoriaDocumentoSeeder extends Seeder
         ];
 
         foreach ($categorie as $categoria) {
-            CategoriaDocumento::create($categoria);
+            CategoriaDocumento::firstOrCreate(
+                ['name' => $categoria['name']], 
+                ['description' => $categoria['description']]
+            );
         }
+
     }
 }

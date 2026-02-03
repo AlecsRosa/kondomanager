@@ -6,15 +6,14 @@ use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SegnalazionePolicy;
-use App\Settings\GeneralSettings;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Schema;
-use Spatie\LaravelSettings\Exceptions\MissingSettings;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Database\Events\MigrationsEnded;
+use App\Settings\GeneralSettings;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,28 +30,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Sincronizza la versione dopo ogni migrazione
+        Event::listen(MigrationsEnded::class, function () {
+            try {
+                $settings = app(GeneralSettings::class);
+                $settings->version = config('app.version');
+                $settings->save();
+            } catch (\Exception $e) {
+                // Ignora se settings non è ancora configurato
+                // (prima installazione in corso)
+            }
+        });
+
         JsonResource::withoutWrapping();
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
 
-        try {
-            // Test if DB connection works
-            DB::connection()->getPdo();
-
-            if (Schema::hasTable('settings')) {
-                try {
-                    $settings = app(GeneralSettings::class);
-                    app()->setLocale($settings->language ?? 'it');
-                } catch (MissingSettings $e) {
-                    app()->setLocale('it');
-                }
-            } else {
-                app()->setLocale('it');
-            }
-        } catch (\Throwable $e) {
-            // No DB connection yet → just use fallback locale
-            app()->setLocale('it');
-        }
     }
 }

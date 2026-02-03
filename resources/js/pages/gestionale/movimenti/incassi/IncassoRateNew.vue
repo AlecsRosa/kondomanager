@@ -1,0 +1,550 @@
+<script setup lang="ts">
+import { ref, watch, computed, onMounted } from 'vue'; 
+import { useForm, Head } from '@inertiajs/vue3';
+import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { 
+    AlertCircle, CheckCircle2, Calculator, RotateCcw, 
+    User, Building, ArrowRight, Euro, FileText, Receipt, 
+    ArrowRightLeft, Info, Coins // Aggiunta icona Coins
+} from 'lucide-vue-next';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
+import { usePermission } from "@/composables/permissions";
+import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
+import { useDebitiLoader } from '@/composables/useDebitiLoader';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
+import type { Rata } from '@/types/gestionale/rata'; 
+
+const props = defineProps<{
+    condominio: any;
+    risorse: any[];
+    condomini: any[];
+    immobili: any[];
+    gestioni: any[];
+}>();
+
+// fromCents: false per gestire i float diretti
+const { euro } = useCurrencyFormatter({ fromCents: false }); 
+
+const { generateRoute } = usePermission();
+const { 
+    rawRateList, 
+    loadingRate, 
+    mode,
+    isScaduta,
+    setPriorityRataId,
+    getRateListByGestione,
+    getTotalAllocato,
+    getTotaleDebito,
+    getBilancioFinale,
+    getPreviewContabile,
+    distributeGreedy,
+    calculateExcess,
+    onManualChange,
+    resetAllocation: resetAllocationComposable,
+    pagaTutto: pagaTuttoComposable,
+    pagaScadute: pagaScaduteComposable,
+    syncFormData
+} = usePaymentDistribution();
+
+const { fetchDebiti: fetchDebitiAPI } = useDebitiLoader();
+
+const searchMode = ref<'persona' | 'immobile'>('persona');
+const selectedImmobileId = ref<number | null>(null);
+
+const form = useForm({
+    pagante_id: null as number | null,
+    cassa_id: null,
+    gestione_id: null,
+    data_pagamento: new Date().toISOString().substring(0, 10),
+    importo_totale: 0,
+    descrizione: '',
+    dettaglio_pagamenti: [] as any[],
+    eccedenza: 0,
+    related_task_id: null as number | null,
+});
+
+const rateList = computed(() => getRateListByGestione(form.gestione_id));
+const totalAllocato = computed(() => getTotalAllocato(rateList.value));
+const totaleDebito = computed(() => getTotaleDebito(rateList.value));
+const bilancioFinale = computed(() => getBilancioFinale(totaleDebito.value, form.importo_totale));
+const previewContabile = computed(() => getPreviewContabile(rateList.value, form.importo_totale, form.eccedenza));
+
+const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?: number | null }) => {
+    loadingRate.value = true;
+    try {
+        const result = await fetchDebitiAPI(
+            (name: string, params: any) => route(generateRoute(name), params),
+            props.condominio.id,
+            params,
+            isScaduta
+        );
+        rawRateList.value = result as Rata[];
+        if (form.importo_totale > 0) runDistribution();
+    } finally {
+        loadingRate.value = false;
+    }
+};
+
+const runDistribution = () => { mode.value === 'auto' ? distributeAuto() : calculateExcessOnly(); };
+const distributeAuto = () => { form.eccedenza = distributeGreedy(rateList.value, form.importo_totale); syncForm(); };
+const handleManualChange = (rata: any, val: string) => { onManualChange(rata, val); calculateExcessOnly(); syncForm(); };
+const calculateExcessOnly = () => { form.eccedenza = calculateExcess(rateList.value, form.importo_totale); };
+const toggleMode = () => { mode.value = mode.value === 'auto' ? 'manual' : 'auto'; if (mode.value === 'auto') distributeAuto(); };
+const resetAllocation = () => { resetAllocationComposable(rateList.value); calculateExcessOnly(); syncForm(); };
+const pagaTutto = () => { const somma = pagaTuttoComposable(rateList.value); form.importo_totale = somma; calculateExcessOnly(); syncForm(); };
+const pagaScadute = () => { const somma = pagaScaduteComposable(rateList.value); form.importo_totale = somma; calculateExcessOnly(); syncForm(); };
+const syncForm = () => { form.dettaglio_pagamenti = syncFormData(rateList.value); };
+
+const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
+    searchMode.value = newMode;
+    rawRateList.value = [];
+    selectedImmobileId.value = null;
+};
+
+const submit = () => {
+    form.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            rawRateList.value = [];
+            form.reset();
+            mode.value = 'auto';
+            searchMode.value = 'persona';
+            selectedImmobileId.value = null;
+        }
+    });
+};
+
+watch(() => form.pagante_id, (newVal) => { if (searchMode.value === 'persona' && newVal) fetchDebiti({ anagrafica_id: newVal }); });
+watch(selectedImmobileId, (newVal) => { if (searchMode.value === 'immobile' && newVal) fetchDebiti({ immobile_id: newVal }); });
+watch(() => form.importo_totale, () => { runDistribution(); });
+watch(() => form.gestione_id, () => {
+    rawRateList.value.forEach(r => { r.da_pagare = 0; r.selezionata = false; });
+    if (form.importo_totale > 0) runDistribution();
+});
+
+onMounted(async () => {
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get('related_task_id');
+    const prefillAnagrafica = params.get('prefill_anagrafica_id');
+    const prefillImporto = params.get('prefill_importo');
+    const prefillDesc = params.get('prefill_descrizione');
+    const prefillRataId = params.get('prefill_rata_id');
+
+    if (taskId) form.related_task_id = parseInt(taskId);
+    if (prefillDesc) form.descrizione = prefillDesc;
+    if (prefillRataId) setPriorityRataId(parseInt(prefillRataId)); else setPriorityRataId(null);
+    if (prefillImporto) form.importo_totale = parseFloat(prefillImporto);
+    if (prefillAnagrafica) form.pagante_id = parseInt(prefillAnagrafica);
+});
+
+// Helper per parsare residuo dal dettaglio quote (che potrebbe essere stringa)
+const parseResiduoQuota = (val: any) => {
+    if (typeof val === 'number') return val;
+    return parseFloat(String(val).replace(/[^\d.-]/g, '')) || 0;
+};
+</script>
+
+<template>
+    <Head title="Registra Incasso" />
+
+    <GestionaleLayout>
+        <div class="space-y-4 max-w-7xl mx-auto px-4 py-4 h-[calc(100vh-100px)] flex flex-col">
+            
+            <div class="flex items-center justify-between shrink-0">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Nuovo incasso rate</h1>
+                    <p class="text-sm text-muted-foreground">Registrazione incasso per il pagamento delle rate condominiali</p>
+                </div>
+                <Badge variant="outline" class="font-mono bg-white">{{ new Date().toLocaleDateString() }}</Badge>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
+                
+                <div class="lg:col-span-4 h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-5 flex-1 overflow-y-auto space-y-5 custom-scrollbar">
+                        <div class="space-y-3">
+                            <Label class="text-[11px] uppercase text-gray-500 font-bold tracking-wider">Cerca debiti per</Label>
+                            <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-lg">
+                                <button @click="toggleSearchMode('persona')" class="flex items-center justify-center py-1.5 text-xs font-medium rounded-md transition-all" :class="searchMode === 'persona' ? 'bg-white text-primary shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700'">
+                                    <User class="w-3.5 h-3.5 mr-1.5"/> Persona
+                                </button>
+                                <button @click="toggleSearchMode('immobile')" class="flex items-center justify-center py-1.5 text-xs font-medium rounded-md transition-all" :class="searchMode === 'immobile' ? 'bg-white text-primary shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700'">
+                                    <Building class="w-3.5 h-3.5 mr-1.5"/> Immobile
+                                </button>
+                            </div>
+
+                            <div v-if="searchMode === 'persona'">
+                                <v-select :options="condomini" v-model="form.pagante_id" label="label" :reduce="c => c.id" class="style-chooser" placeholder="Seleziona condomino..."/>
+                            </div>
+
+                            <div v-else>
+                                <v-select :options="immobili" v-model="selectedImmobileId" label="label" :reduce="i => i.id" class="style-chooser mb-3" placeholder="Seleziona unità..."/>
+                                <Label class="text-emerald-700 font-bold text-xs">Intestatario ricevuta</Label>
+                                <v-select :options="condomini" v-model="form.pagante_id" label="label" :reduce="c => c.id" class="style-chooser" placeholder="Chi versa i soldi?"/>
+                            </div>
+                        </div>
+
+                        <hr class="border-gray-100">
+
+                        <div>
+                            <Label class="text-[11px] uppercase text-gray-500 font-bold tracking-wider mb-2 block">Importo versato</Label>
+                            <div class="relative group">
+                                <div class="absolute left-0 top-0 bottom-0 w-9 flex items-center justify-center bg-gray-50 border-r border-gray-200 rounded-l-md group-focus-within:bg-primary/5 group-focus-within:border-primary/30 transition-colors">
+                                    <Euro class="w-4 h-4 text-gray-400 group-focus-within:text-primary"/>
+                                </div>
+                                <Input type="number" step="0.01" min="0" v-model="form.importo_totale" class="pl-11 h-10 text-lg font-bold font-mono shadow-sm focus:ring-2 focus:ring-primary/20 border-gray-200" placeholder="0.00" />
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <Label class="text-xs font-medium text-gray-600 mb-1 block">Risorsa</Label>
+                                    <select v-model="form.cassa_id" class="w-full border border-gray-200 rounded-md px-2 bg-white h-9 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                        <option :value="null">Seleziona...</option>
+                                        <option v-for="c in risorse" :key="c.id" :value="c.id">{{ c.nome }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <Label class="text-xs font-medium text-gray-600 mb-1 block">Data</Label>
+                                    <div class="relative">
+                                        <Input type="date" v-model="form.data_pagamento" class="h-9 text-xs pr-2"/>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <Label class="text-xs font-medium text-gray-600 mb-1 block">Causale</Label>
+                                <div class="relative">
+                                    <FileText class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                    <Input placeholder="Es. Bonifico saldo 2024" v-model="form.descrizione" class="pl-8 h-9 text-xs"/>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <Label class="text-xs font-medium text-gray-400 mb-1 block">Gestione (Filtro)</Label>
+                                <select v-model="form.gestione_id" class="w-full border border-gray-200 rounded-md px-2 text-xs bg-gray-50 text-gray-500 h-9 focus:bg-white transition-colors">
+                                    <option :value="null">Tutte (Automatica)</option>
+                                    <option v-for="g in gestioni" :key="g.id" :value="g.id">{{ g.nome }}</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-5 bg-gray-50 border-t border-gray-200 shrink-0">
+                        <div class="flex justify-between items-center text-xs mb-3 px-1">
+                            <span class="text-gray-500">Totale allocato:</span>
+                            <span class="font-bold text-gray-800">{{ euro(totalAllocato) }}</span>
+                        </div>
+
+                        <Button @click="submit" :disabled="form.processing || form.importo_totale <= 0 || !form.pagante_id" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md shadow-emerald-600/10 transition-all text-sm">
+                            <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
+                        </Button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-8 h-full flex flex-col gap-4 overflow-hidden">
+                    
+                    <div class="bg-white rounded-xl border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+                        
+                        <div class="p-3 border-b bg-gray-50 flex justify-between items-center shrink-0">
+                            <div class="flex items-center gap-3">
+                                <h3 class="font-semibold text-gray-900 text-sm">Ripartizione debito</h3>
+                                <Badge v-if="rateList.length" variant="secondary" class="bg-white border text-gray-600 text-[10px]">
+                                    {{ rateList.length }} Rate
+                                </Badge>
+                            </div>
+                            
+                            <div v-if="rateList.length" class="flex items-center gap-2 text-xs">
+                                <span class="text-gray-500">Debito Totale:</span>
+                                <span class="font-bold text-gray-900 mr-2">{{ euro(totaleDebito) }}</span>
+                                <ArrowRight class="w-3 h-3 text-gray-300" />
+                                <div class="flex items-center gap-1 px-2 py-0.5 rounded border transition-colors shadow-sm" :class="bilancioFinale.class">
+                                    <span class="font-medium">{{ bilancioFinale.label }}</span>
+                                    <span class="font-bold">{{ euro(bilancioFinale.value) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="px-3 py-2 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
+                            <div class="flex items-center gap-2">
+                                <div class="flex items-center bg-white border rounded-md px-1 py-0.5 h-7 shadow-sm cursor-pointer select-none" @click="toggleMode">
+                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'auto' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">Auto</div>
+                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'manual' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">Manual</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2" v-if="rateList.length">
+                                <Button size="sm" variant="ghost" @click="resetAllocation" class="h-7 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 px-2"><RotateCcw class="w-3 h-3 mr-1"/> Reset</Button>
+                                <div class="h-3 w-px bg-gray-300 mx-1"></div>
+                                <Button size="sm" variant="outline" @click="pagaScadute" class="h-7 text-xs bg-white border-gray-200 text-gray-600"><Calculator class="w-3 h-3 mr-1.5"/> Scadute</Button>
+                                <Button size="sm" variant="outline" @click="pagaTutto" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga tutto</Button>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 overflow-y-auto custom-scrollbar">
+                            <table v-if="rateList.length" class="w-full text-sm border-collapse">
+                                <thead class="bg-white sticky top-0 z-10 shadow-sm text-[10px] uppercase text-gray-400 font-bold tracking-wider">
+                                    <tr>
+                                        <th class="p-3 pl-4 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">Scadenza</th>
+                                        <th class="p-3 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">Rata / Intestatario</th>
+                                        <th class="p-3 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100">Residuo</th>
+                                        <th class="p-3 pr-4 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100 w-[130px]">Importo</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-50">
+                                    <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="[r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50', r.residuo < 0 ? 'bg-blue-50/30' : '']">
+
+                                        <td class="p-3 pl-4 align-top">
+                                            <div class="flex flex-col">
+                                                <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
+                                                <span v-if="r.is_emitted === false" class="mt-1 inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" title="Questa rata non è stata ancora emessa contabilmente">
+                                                    <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
+                                                </span>
+                                                <span v-if="r.scaduta && r.residuo > 0" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded">
+                                                    <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
+                                                </span>
+                                            </div>
+                                        </td>
+
+                                        <td class="p-3 align-top">
+                                            <div class="text-xs font-bold text-gray-800 mb-0.5">{{ r.descrizione }}</div>
+                                            
+                                            <div class="text-[11px] text-blue-600 font-medium flex items-center gap-1">
+                                                <User class="w-3 h-3 opacity-70"/> 
+                                                {{ r.intestatario }}
+                                            </div>
+                                            
+                                            <div class="text-[10px] text-gray-400 mt-0.5 flex flex-wrap items-center gap-1">
+                                                <span>{{ r.gestione }}</span>
+                                                
+                                                <div v-if="r.dettaglio_quote && r.dettaglio_quote.length > 0">
+                                                    <TooltipProvider :delayDuration="0">
+                                                        <Tooltip>
+                                                            <TooltipTrigger as-child>
+                                                                <div class="ml-1 inline-flex items-center cursor-help">
+                                                                    <Info class="w-3 h-3 text-blue-400" />
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            
+                                                            <TooltipContent side="bottom" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-2xl rounded-lg z-[100]">
+    
+                                                                <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 text-center">
+                                                                    <span v-if="r.coperta_da_credito || r.residuo < 0 || r.parzialmente_coperta">
+                                                                        Utilizzo Credito / Copertura
+                                                                    </span>
+                                                                    <span v-else>
+                                                                        Analisi Debito
+                                                                    </span>
+                                                                </div>
+
+                                                                <ul class="space-y-4">
+                                                                    <li v-for="(dett, idx) in r.dettaglio_quote" :key="idx" class="text-[11px]">
+                                                                        <div class="font-bold text-white mb-1.5 pb-0.5 border-b border-slate-700/50 flex items-center gap-2">
+                                                                            <Building class="w-3 h-3 text-slate-500"/> {{ dett.unita }}
+                                                                        </div>
+                                                                        
+                                                                        <div v-if="dett.waterfall_start !== undefined">
+                                                                            <div v-if="Math.abs(dett.waterfall_start) > 0.001" class="flex justify-between items-center pl-2 mb-1 text-slate-400">
+                                                                                <span class="flex items-center gap-1">
+                                                                                    <div class="w-1.5 h-1.5 rounded-full" :class="dett.waterfall_start < 0 ? 'bg-emerald-500' : 'bg-red-500'"></div>
+                                                                                    {{ dett.waterfall_start < 0 ? 'Credito Disp.:' : 'Saldo Progressivo:' }}
+                                                                                </span>
+                                                                                <span class="font-mono">{{ euro(dett.waterfall_start) }}</span>
+                                                                            </div>
+
+                                                                            <div class="flex justify-between items-center pl-2 mb-1 text-white">
+                                                                                <span class="pl-2.5">Quota Rata:</span>
+                                                                                <span class="font-mono font-bold">+ {{ euro(dett.waterfall_cost ?? 0) }}</span>
+                                                                            </div>
+
+                                                                            <div class="flex justify-between items-center pl-2 pt-1 border-t border-slate-800">
+                                                                                <span class="text-[10px] text-slate-500 font-bold uppercase">Nuovo Saldo:</span>
+                                                                                <span class="font-mono font-bold" :class="(dett.waterfall_end ?? 0) < 0 ? 'text-emerald-500' : 'text-white'">
+                                                                                    {{ euro(dett.waterfall_end ?? 0) }}
+                                                                                </span>
+                                                                            </div>
+                                                                            
+                                                                            <div v-if="(dett.waterfall_end ?? 0) < 0" class="text-right text-[9px] text-emerald-500 italic mt-0.5 pr-1">
+                                                                                (Sei ancora a credito)
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div v-else>
+                                                                        <div class="flex justify-between items-center pl-2 mb-1">
+                                                                                <span class="text-slate-400">Quota rata:</span>
+                                                                                <span class="font-mono font-medium text-slate-200">
+                                                                                    + {{ euro(Math.abs(dett.componente_spesa)) }}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div class="flex justify-between items-center pl-2 pt-1 border-t border-slate-800">
+                                                                                <span class="text-[10px] text-slate-500 font-bold uppercase">Totale:</span>
+                                                                                <span class="font-mono font-bold" :class="parseResiduoQuota(dett.residuo) < 0 ? 'text-emerald-500' : 'text-orange-400'">
+                                                                                    {{ euro(parseResiduoQuota(dett.residuo)) }}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </li>
+                                                                </ul>
+
+                                                                <div class="border-t-2 border-slate-600 pt-2 mt-3 flex justify-between items-center bg-slate-800/50 p-2 rounded -mx-2">
+                                                                    <span class="text-xs font-bold text-white uppercase tracking-wide">Netto Rata:</span>
+                                                                    <div class="text-right">
+                                                                        <span class="font-mono font-bold text-sm" :class="r.residuo < 0 ? 'text-emerald-400' : 'text-white'">
+                                                                            {{ r.residuo < 0 ? 'A Credito ' : '' }} 
+                                                                            {{ euro(Math.abs(r.residuo)) }}
+                                                                        </span>
+                                                                        <div v-if="r.coperta_da_credito" class="text-[9px] text-emerald-400 italic">Interamente coperta</div>
+                                                                    </div>
+                                                                </div>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                </div>
+                                                
+                                                <span v-else>• {{ r.unita }}</span>
+                                            </div>
+                                        </td>
+
+                                        <td class="p-3 text-right align-top">
+                                            <div v-if="r.coperta_da_credito" class="flex flex-col items-end">
+                                                <span class="font-mono text-xs font-bold text-gray-400 line-through decoration-gray-300">
+                                                    {{ euro(r.residuo_originale) }}
+                                                </span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-200 mt-0.5" title="Coperta dal credito pregresso">
+                                                    <Coins class="w-3 h-3 mr-1" /> COPERTA
+                                                </span>
+                                            </div>
+
+                                            <div v-else-if="r.parzialmente_coperta" class="flex flex-col items-end">
+                                                <span class="font-mono text-xs font-bold text-gray-800">
+                                                    {{ euro(r.residuo) }}
+                                                </span>
+                                                <span class="text-[9px] text-blue-500 font-medium">
+                                                    (Ridotto da {{ euro(r.residuo_originale) }})
+                                                </span>
+                                            </div>
+
+                                            <div v-else-if="r.residuo < 0" class="flex flex-col items-end">
+                                                <span class="font-mono text-xs font-bold text-blue-600">
+                                                    {{ euro(r.residuo) }}
+                                                </span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-200 mt-0.5">
+                                                    CREDITO
+                                                </span>
+                                            </div>
+
+                                            <div v-else class="flex flex-col items-end">
+                                                <span class="font-mono text-xs font-medium text-gray-500">
+                                                    {{ euro(r.residuo) }}
+                                                </span>
+                                                
+                                                <div v-if="r.residuo > 0 && r.residuo < r.importo_totale && !r.parzialmente_coperta" class="mt-1">
+                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" 
+                                                        :title="'Importo originale: ' + euro(r.importo_totale)">
+                                                        <RotateCcw class="w-2.5 h-2.5 mr-1" />
+                                                        PARZIALE
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td class="p-3 pr-4 text-right align-top">
+                                            <Input v-if="r.residuo > 0" type="number" v-model="r.da_pagare" @input="onManualChange(r, $event.target.value)" :disabled="mode==='auto'" class="text-right font-bold h-8 text-xs font-mono transition-all" :class="r.da_pagare > 0 ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700' : 'bg-transparent border-transparent group-hover:border-gray-200'" placeholder="0.00" />
+                                            <div v-else class="text-xs text-blue-400 italic py-1 opacity-70">
+                                                Non pagabile
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-else class="flex flex-col items-center justify-center h-full text-gray-400 space-y-4 py-12 bg-gray-50/30">
+                                <div class="p-4 bg-white rounded-full shadow-sm border border-gray-100"><ArrowRightLeft class="w-8 h-8 opacity-20" /></div>
+                                <div class="text-center">
+                                    <p class="font-medium text-sm text-gray-500">Nessuna rata visualizzata</p>
+                                    <p class="text-xs text-gray-400 mt-1">Seleziona un condomino o un immobile per iniziare</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 text-white rounded-xl border border-slate-700 shadow-sm flex flex-col h-[200px] shrink-0 overflow-hidden">
+                        <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 shrink-0">
+                            <h3 class="font-semibold text-sm flex items-center">
+                                <Receipt class="w-4 h-4 mr-2 text-emerald-400"/> Anteprima registrazione
+                            </h3>
+                            <div class="flex gap-4 text-xs">
+                                <div>
+                                    <span class="text-slate-400 mr-2">Allocato:</span>
+                                    <span class="font-bold text-emerald-400">{{ euro(totalAllocato) }}</span>
+                                </div>
+                                <div v-if="form.eccedenza > 0">
+                                    <span class="text-slate-400 mr-2">Eccedenza:</span>
+                                    <span class="font-bold text-blue-400">{{ euro(form.eccedenza) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex-1 overflow-y-auto p-4 custom-scrollbar-dark">
+                            <div v-if="previewContabile.hasData" class="space-y-2">
+                                <div v-for="riga in previewContabile.righe" :key="riga.id" class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 mb-2 last:border-0">
+                                    <div class="flex-1 mr-4">
+                                        <div class="text-slate-200 font-medium">{{ riga.descrizione }}</div>
+                                        <div v-if="riga.status === 'PARZIALE'" class="mt-0.5 flex items-center text-amber-500 text-[10px] font-bold">
+                                            Resta da pagare: {{ euro(riga.residuo_futuro) }}
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="font-mono font-bold text-white">{{ euro(riga.pagato) }}</div>
+                                        <span v-if="riga.status === 'SALDATA'" class="text-[9px] text-emerald-500 uppercase font-bold tracking-wider">Saldata</span>
+                                        <span v-else class="text-[9px] text-amber-500 uppercase font-bold tracking-wider">Parziale</span>
+                                    </div>
+                                </div>
+
+                                <div v-if="previewContabile.anticipo > 0" class="flex justify-between items-center pt-2 text-xs">
+                                    <div class="text-blue-400 font-medium">Anticipo / Eccedenza</div>
+                                    <div class="font-mono font-bold text-blue-400">+ {{ euro(previewContabile.anticipo) }}</div>
+                                </div>
+                            </div>
+                            <div v-else class="flex flex-col items-center justify-center h-full text-slate-600 text-xs">
+                                <Receipt class="w-8 h-8 opacity-20 mb-2" />
+                                <p>Inserisci un importo per vedere l'anteprima</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </GestionaleLayout>
+</template>
+
+<style scoped>
+:deep(.style-chooser .vs__dropdown-toggle) {
+    border-color: #e5e7eb;
+    padding: 2px 0;
+    border-radius: 6px;
+    background-color: white;
+    min-height: 36px;
+}
+:deep(.style-chooser .vs__selected) {
+    font-size: 0.8rem;
+}
+/* Light Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Dark Scrollbar for Preview */
+.custom-scrollbar-dark::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar-dark::-webkit-scrollbar-track { background: #1e293b; }
+.custom-scrollbar-dark::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+.custom-scrollbar-dark::-webkit-scrollbar-thumb:hover { background: #64748b; }
+</style>

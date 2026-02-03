@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckForPendingUpdates;
 use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckSuspendedUser;
 use App\Http\Middleware\CheckUserRegistration;
@@ -11,6 +12,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use App\Http\Middleware\EnsureTwoFactorChallengeSession;
+use App\Http\Middleware\SetLocaleMiddleware;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -21,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
 
         $middleware->web(append: [
+            CheckForPendingUpdates::class,
+            SetLocaleMiddleware::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
@@ -34,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'auto.update' => \App\Http\Middleware\EnsureAutoUpdateEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

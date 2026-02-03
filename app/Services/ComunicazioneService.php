@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Permission;
+use App\Enums\Role;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use Illuminate\Support\Collection;
@@ -14,41 +15,75 @@ use Illuminate\Support\Facades\Log;
 class ComunicazioneService
 {
     /**
-     * Get paginated comunicazioni based on user role.
+     * Get paginated or limited comunicazioni based on user role.
      *
      * @param Anagrafica|null $anagrafica
      * @param Collection|null $condominioIds
      * @param array $validated
-     * @return LengthAwarePaginator
+     * @param int|null $limit <-- NUOVO PARAMETRO
+     * @return LengthAwarePaginator|Collection
      */
     public function getComunicazioni(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
-        array $validated = []
-    ): LengthAwarePaginator {
+        array $validated = [],
+        ?int $limit = null // <-- Aggiunto
+    ): LengthAwarePaginator|Collection {
         return $this->isAdmin()
-            ? $this->getAdminScopedQuery($validated)
-            : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
+            ? $this->getAdminScopedQuery($validated, $limit)
+            : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated, $limit);
     }
 
     /**
-     * Get user-scoped comunicazioni query with filters and pagination.
+     * Get user-scoped comunicazioni query with filters and pagination/limit.
      *
      * @param Anagrafica|null $anagrafica
      * @param Collection|null $condominioIds
      * @param array $validated
-     * @return LengthAwarePaginator
+     * @param int|null $limit
+     * @return LengthAwarePaginator|Collection
      */
     private function getUserScopedQuery(
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds,
-        array $validated
-    ): LengthAwarePaginator {
+        array $validated,
+        ?int $limit = null
+    ): LengthAwarePaginator|Collection {
         $query = $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
         $query = $this->applyFilters($query, $validated);
 
+        $query->orderBy('created_at', 'desc');
+
+        // --- LOGICA OTTIMIZZAZIONE ---
+        if ($limit) {
+            return $query->take($limit)->get();
+        }
+
         return $query
-            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->withQueryString();
+    }
+
+    /**
+     * Get admin-scoped comunicazioni query with filters and pagination/limit.
+     *
+     * @param array $validated
+     * @param int|null $limit
+     * @return LengthAwarePaginator|Collection
+     */
+    private function getAdminScopedQuery(array $validated = [], ?int $limit = null): LengthAwarePaginator|Collection
+    {
+        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche']);
+        $query = $this->applyFilters($query, $validated);
+
+        $query->orderBy('created_at', 'desc');
+
+        // --- LOGICA OTTIMIZZAZIONE ---
+        if ($limit) {
+            return $query->take($limit)->get();
+        }
+
+        return $query
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
@@ -99,23 +134,6 @@ class ComunicazioneService
                       });
                 });
             });
-    }
-
-    /**
-     * Get admin-scoped comunicazioni query with filters and pagination.
-     *
-     * @param array $validated
-     * @return LengthAwarePaginator
-     */
-    private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
-    {
-        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche']);
-        $query = $this->applyFilters($query, $validated);
-
-        return $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
-            ->withQueryString();
     }
 
     /**
@@ -194,7 +212,7 @@ class ComunicazioneService
     private function isAdmin(): bool
     {
         $user = Auth::user();
-        return $user->hasRole(['amministratore', 'collaboratore']) ||
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) ||
                $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }

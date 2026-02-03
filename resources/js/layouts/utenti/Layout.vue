@@ -1,24 +1,35 @@
 <script setup lang="ts">
+
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import type { NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
+import { UsersRound, Drama, KeyRound, Mails } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
+import type { LinkItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+const sidebarNavItems: LinkItem[] = [
     {
-        title: 'Utenti',
+        type: 'link',
+        icon: UsersRound,
+        title: 'impostazioni.sidebar.users',
         href: '/utenti',
     },
     {
-        title: 'Ruoli',
+        type: 'link',
+        icon: Drama,
+        title: 'impostazioni.sidebar.roles',
         href: '/ruoli',
     },
     {
-        title: 'Permessi',
+        type: 'link',
+        icon: KeyRound,
+        title: 'impostazioni.sidebar.permissions',
         href: '/permessi',
     },
     {
-        title: 'Inviti',
+        type: 'link',
+        icon: Mails,
+        title: 'impostazioni.sidebar.invites',
         href: '/inviti',
     }
 ];
@@ -29,7 +40,10 @@ const currentPath = window.location.pathname;
 
 <template>
     <div class="px-4 py-6">
-        <Heading title="Gestione utenti" description="Di seguito un elenco degli utenti registrati, ruoli, permessi e inviti" />
+        <Heading 
+            :title="trans('users.layout.heading_title')" 
+            :description="trans('users.layout.heading_description')"  
+        />
 
         <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
             <aside class="w-full max-w-xl lg:w-48">
@@ -42,7 +56,8 @@ const currentPath = window.location.pathname;
                         as-child
                     >
                         <Link :href="item.href">
-                            {{ item.title }}
+                            <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
+                            {{ trans(item.title) }}
                         </Link>
                     </Button>
                 </nav>

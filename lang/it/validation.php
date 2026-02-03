@@ -175,7 +175,8 @@ return [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
-            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido',
+            'unique_email_across_tables' => "Questo indirizzo email è già in uso."
         ],
         'email_secondaria' => [
             'required' => 'Il campo :attribute è richiesto',
@@ -207,6 +208,9 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute deve essere successivo a oggi',
             'before:today' => ':attribute deve essere precedente a oggi',
+            'codice_fiscale' => [
+                'unique' => 'Esiste già una anagrafica registrata con questo :attribute'
+            ]
         ],
         'evento' => [
             'after_or_equal:today' => 'La :attribute deve essere successivo o uguale a oggi'
@@ -241,6 +245,7 @@ return [
             'indirizzo' => 'Il campo indirizzo anagrafica',
             'scadenza_documento' => 'Il campo scadenza documento',
             'data_nascita' => 'Il campo data nascita',
+            'codice_fiscale' => 'codice fiscale'
         ],
         'ruoli' => [
             'name' => 'nome ruolo',
