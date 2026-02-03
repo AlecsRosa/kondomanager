@@ -8,7 +8,7 @@ class GeneralSettings extends Settings
 {
     public bool $user_frontend_registration = false;
     public string $language = 'it';
-    public string $version = '0.0.0';
+    public string $version = '1.7.0';
     
     public static function group(): string
     {

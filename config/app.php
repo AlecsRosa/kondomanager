@@ -24,12 +24,9 @@ return [
     | the framework needs to place the application's version in a notification
     | or any other location as required by the application or its packages.
     |
-    | IMPORTANTE:
-    | - Nello ZIP della Beta 2 questo valore deve essere '1.8.0-beta.2'
-    | - Nello ZIP della Beta 3 questo valore deve essere '1.8.0-beta.3'
     */
 
-    'version' => env('APP_VERSION', '1.8.0-beta.5'),
+    'version' => env('APP_VERSION', '1.8.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -149,6 +146,6 @@ return [
     | - FALSE: Per VPS (con Supervisor). Non fa nulla (ci pensa Supervisor).
     |
     */
-    'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', true),
+    'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
 
 ];
