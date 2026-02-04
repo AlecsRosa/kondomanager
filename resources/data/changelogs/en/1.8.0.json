@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Smart Activity Inbox: intelligent event engine for deadline and payment suggestions",
+        "Frontend Automatic Updates for installations without server console access",
+        "Installment Plan Evolution: support for multiple plans and expense chapters (e.g., Wing A)",
+        "Internationalization: full support for English and Portuguese languages",
+        "Accounting Modules: new Vendor management, Condominium Cash Funds, and Statement of Account in profile",
+        "UX Optimization: smart property association and Default Condominium login setting",
+        "DevOps: official Docker deployment support",
+        "Fixes: enabled negative values for previous credits and password security hardening"
+    ]
+}

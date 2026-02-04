@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Smart Activity Inbox: motore di eventi intelligenti per suggerimenti su scadenze e pagamenti",
+        "Aggiornamenti Automatici da Frontend per installazioni senza accesso a console server",
+        "Evoluzione Piani Rate: supporto a piani multipli e capitoli di spesa (es. Scala A)",
+        "Internazionalizzazione: supporto completo per le lingue Inglese e Portoghese",
+        "Moduli Contabili: nuova gestione Fornitori, Casse condominiali e Estratto Conto in anagrafica",
+        "Ottimizzazione UX: associazione immobili intelligente e impostazione Condominio di Default",
+        "DevOps: supporto ufficiale al deploy tramite Docker",
+        "Fix: abilitazione valori negativi per crediti pregressi e hardening sicurezza password"
+    ]
+}

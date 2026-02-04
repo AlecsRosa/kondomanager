@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Smart Activity Inbox: mecanismo de eventos inteligente para sugestões de prazos e pagamentos",
+        "Atualizações Automáticas via Frontend para instalações sem acesso ao console do servidor",
+        "Evolução dos Planos de Parcelamento: suporte a múltiplos planos e capítulos de despesa (ex: Bloco A)",
+        "Internacionalização: suporte completo para os idiomas Inglês e Português",
+        "Módulos Contábeis: nova gestão de Fornecedores, Caixas do Condomínio e Extrato de Conta no perfil",
+        "Otimização de UX: associação inteligente de imóveis e definição de Condomínio Padrão no login",
+        "DevOps: suporte oficial para deploy via Docker",
+        "Correções: permissão de valores negativos para créditos anteriores e reforço na segurança de senhas"
+    ]
+}
