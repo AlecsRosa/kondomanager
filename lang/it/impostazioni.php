@@ -8,6 +8,10 @@ return [
     'error_update_notification_preferences'   => 'Si è verificato un errore nel tentativo di aggiornare le tue preferenze di notifica',
     'success_save_general_settings'           => 'Le impostazioni generali sono state salvate con successo',
     'error_save_general_settings'             => 'Si è verificato un errore durante il salvataggio delle impostazioni generali',
+    'success_save_cron_settings'              => 'Le impostazioni di automazione cloud sono state salvate con successo',
+    'error_save_cron_settings'                => 'Si è verificato un errore durante il salvataggio delle impostazioni di automazione cloud',
+    'success_regenerate_cron_token'           => 'Token webhook rigenerato con successo',
+    'error_regenerate_cron_token'             => 'Si è verificato un errore durante la rigenerazione del token',
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -17,6 +21,8 @@ return [
         'settings_description'         => 'Di seguito un elenco di tutte le impostazioni configurabili per l\'applicazione',
         'general_settings_title'       => 'Impostazioni generali',
         'general_settings_description' => 'On this page you can manage the general settings of the application',
+        'cron_settings_title'          => 'Automazione cloud (Cron esterno)',
+        'cron_settings_description'    => 'Utilizza questa funzione se il tuo hosting non supporta cron jobs ogni minuto. Servizi supportati: cron-job.org',
     ],
     /* ------------------------------------------------------------------
      | Labels
@@ -47,6 +53,15 @@ return [
         'select_building_description'   => 'Seleziona il condominio da aprire automaticamente il gestionale dopo il login',
         'user_registration_title'       => 'Abilita registrazione utenti',
         'user_registration_description' => 'Se attivato, gli utenti possono registrarsi dalla home page',
+        'cron_settings_title'           => 'Automazione cloud',
+        'cron_settings_description'     => 'Configura cron-job.org per hosting condivisi',
+        'enable_external_scheduler_title' => 'Abilita scheduler esterno',
+        'enable_external_scheduler_description' => 'Permetti a servizi terzi di eseguire le automazioni',
+        'webhook_url_title'             => 'Webhook URL',
+        'webhook_url_description'       => 'Copia questo URL e imposta una chiamata GET ogni 1 minuto sul tuo servizio esterno',
+        'webhook_url_badge'             => 'Segreto',
+        'security_warning_title'        => 'Sicurezza IP attiva',
+        'security_warning_description'  => 'Il sistema accetta chiamate solo dagli IP ufficiali di cron-job.org. Se usi un altro servizio, questa configurazione non funzionerà.',
     ],
     /* ------------------------------------------------------------------
      | Placeholders for inputs
@@ -65,7 +80,15 @@ return [
      | Action buttons (toolbar, card actions, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
-        'save_settings' => 'Salva impostazioni',
+        'save_settings'    => 'Salva impostazioni',
+        'copy_url'         => 'Copia URL',
+        'regenerate_token' => 'Rigenera token',
+    ],
+    /* ------------------------------------------------------------------
+     | Confirmations
+     | ------------------------------------------------------------------ */
+    'confirmations' => [
+        'regenerate_token' => 'Sei sicuro? Dovrai aggiornare l\'URL su cron-job.org',
     ],
     /* ------------------------------------------------------------------
     | Sidebar navigation

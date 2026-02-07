@@ -17,6 +17,8 @@ use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
 use App\Http\Controllers\Users\UserVerifyController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Artisan;
+use App\Http\Middleware\CheckExternalCron;
 
 Route::get('/', WelcomeController::class)
     ->name('home');
@@ -150,21 +152,25 @@ Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
     });
 
 /*
-|--------------------------------------------------------------------------
-| System Upgrade Routes
-|--------------------------------------------------------------------------
-*/
 
-/* Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
-    ->prefix('system/upgrade')
-    ->name('system.upgrade.')
-    ->group(function () {
-        Route::get('/', [SystemUpgradeController::class, 'index'])->name('index');
-        Route::post('/launch', [SystemUpgradeController::class, 'launch'])->name('launch');
-        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
-        Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
-        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
-    }); */
+|--------------------------------------------------------------------------
+| Rotta per Cron Job Esterno
+|--------------------------------------------------------------------------
+| Queste rotte sono state spostate in routes/settings.php e routes/auth.php per organizzazione
+| Mantieni questo file pulito e focalizzato su funzionalità principali come utenti, ruoli, permessi, ecc.
+| Le rotte di impostazioni e autenticazione sono più specifiche e meritano un file dedicato.
+*/
+Route::get('/system/run-scheduler', function () {
+    
+    Artisan::call('schedule:run');
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Scheduler eseguito (WEB).',
+        'timestamp' => now()->toDateTimeString(),
+    ]);
+
+})->middleware(CheckExternalCron::class);
 
 /*
 |--------------------------------------------------------------------------

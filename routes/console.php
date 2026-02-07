@@ -24,7 +24,16 @@ Schedule::command('system:check-updates')
     ->runInBackground();
 
 // ============================================================================
-// 3. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
+// 3. CONTROLLO AGGIORNAMENTI IP CRON-JOB.ORG
+// ============================================================================
+// Aggiornamento automatico IP di cron-job.org
+Schedule::command('cronjob:update-ips')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// ============================================================================
+// 4. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
 // ============================================================================
 // Si attiva solo se configurato in config/app.php
 if (config('app.scheduler_queue_worker')) {

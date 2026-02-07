@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
 use App\Http\Controllers\Settings\PasswordController;
@@ -18,6 +19,15 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/generali', [ImpostazioniGeneraliController::class, 'store'])
         ->name('impostazioni.generali.store');
+
+    Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
+        ->name('impostazioni.cron'); 
+
+    Route::post('impostazioni/cron', [CronSettingsController::class, 'update'])
+        ->name('impostazioni.cron.update'); 
+
+    Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
+        ->name('impostazioni.cron.regenerate'); 
     
     Route::redirect('settings', 'settings/profile');
 

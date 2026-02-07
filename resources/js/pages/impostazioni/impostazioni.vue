@@ -3,7 +3,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -34,6 +34,12 @@ const apps = computed(() => [
     logo: Users,
     desc: 'impostazioni.dialogs.users_settings_description',
     href: "/utenti",
+  },
+  {
+    name: 'impostazioni.dialogs.cron_settings_title', 
+    logo: Timer,
+    desc: 'impostazioni.dialogs.cron_settings_description',
+    href: "/impostazioni/cron", 
   },
   {
     name: 'impostazioni.dialogs.backups_settings_title',
