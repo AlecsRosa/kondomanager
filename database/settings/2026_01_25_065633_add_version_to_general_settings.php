@@ -6,7 +6,7 @@ return new class extends SettingsMigration
 {
     public function up(): void
     {
-        $this->migrator->add('general.version', config('app.version', '1.8.0-beta.2'));
+        $this->migrator->add('general.version', config('app.version', '1.9.0'));
     }
 
     public function down(): void
