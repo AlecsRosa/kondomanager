@@ -42,7 +42,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->validateCsrfTokens(except: [
-            'system/run-scheduler', // L'URI della rotta che abbiamo definito sopra
+            'system/run-scheduler', 
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

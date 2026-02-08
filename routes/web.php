@@ -19,6 +19,8 @@ use App\Http\Controllers\Users\UserVerifyController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Middleware\CheckExternalCron;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request; // Assicurati di importare Request
 
 Route::get('/', WelcomeController::class)
     ->name('home');
@@ -156,21 +158,46 @@ Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
 |--------------------------------------------------------------------------
 | Rotta per Cron Job Esterno
 |--------------------------------------------------------------------------
-| Queste rotte sono state spostate in routes/settings.php e routes/auth.php per organizzazione
-| Mantieni questo file pulito e focalizzato su funzionalità principali come utenti, ruoli, permessi, ecc.
-| Le rotte di impostazioni e autenticazione sono più specifiche e meritano un file dedicato.
+| Questa rotta è dedicata esclusivamente all'esecuzione dello scheduler tramite un cron job esterno (es. cron-job.org).
+| Il middleware CheckExternalCron gestisce la sicurezza, autorizzando solo le richieste con token valido e provenienti dagli IP di cron-job.org.
+| La rotta è protetta da un token di sicurezza configurabile e da un controllo IP per garantire che solo cron-job.org possa accedervi, prevenendo abusi e accesssi non autorizzati.
 */
-Route::get('/system/run-scheduler', function () {
+
+Route::get('/system/run-scheduler', function (Request $request) {
     
-    Artisan::call('schedule:run');
+    // 1. ATOMIC LOCK (Protezione Anti-Sovrapposizione)
+    // Se lo scheduler è lento e dura più di 1 minuto, impediamo che
+    // ne parta un secondo in parallelo che impallerebbe la CPU/RAM.
+    // Il lock scade automaticamente dopo 50 secondi.
+    $lock = Cache::lock('scheduler_running', 50);
 
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Scheduler eseguito (WEB).',
-        'timestamp' => now()->toDateTimeString(),
-    ]);
+    if (!$lock->get()) {
+        // Se non riusciamo a prendere il lock, significa che sta già girando.
+        return response()->json([
+            'status' => 'skipped',
+            'message' => 'Scheduler già in esecuzione (Overlap Protection).',
+        ], 429);
+    }
 
-})->middleware(CheckExternalCron::class);
+    try {
+        // Eseguiamo lo scheduler
+        Artisan::call('schedule:run');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Scheduler eseguito (WEB).',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+    } finally {
+        // Rilasciamo il blocco immediatamente dopo aver finito
+        $lock->release();
+    }
+
+})->middleware([
+    CheckExternalCron::class, 
+    'throttle:3,1'
+]);
 
 /*
 |--------------------------------------------------------------------------

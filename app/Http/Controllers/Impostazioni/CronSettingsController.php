@@ -21,13 +21,16 @@ class CronSettingsController extends Controller
         $webhookUrl = null;
         
         if ($settings->external_cron_enabled && !empty($settings->external_cron_token)) {
-            // Assicurati che il percorso api/v1/... corrisponda alla tua rotta in api.php
             $webhookUrl = url('/system/run-scheduler?token=' . $settings->external_cron_token);
         }
 
         // Recuperiamo gli IP dalla cache o usiamo i fallback
         $ips = Cache::get('cronjob_allowed_ips', [
-            '116.203.134.67', '116.203.129.16', '23.88.105.37', '128.140.8.200', '91.99.23.109'
+            '116.203.134.67', 
+            '116.203.129.16', 
+            '23.88.105.37', 
+            '128.140.8.200', 
+            '91.99.23.109'
         ]);
 
         return Inertia::render('impostazioni/impostazioniCron', [
