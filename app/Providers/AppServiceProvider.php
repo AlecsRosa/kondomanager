@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Database\Events\MigrationsEnded;
 use App\Settings\GeneralSettings;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,6 +32,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ====================================================================
+        // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)
+        // ====================================================================
+
+        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS
+        if (config('app.url') && str_contains(config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
         // ====================================================================
         // GESTIONE PROXY E HEADER DI RICHIESTA (X-Forwarded-*)
         // ====================================================================
