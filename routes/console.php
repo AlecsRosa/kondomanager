@@ -41,3 +41,8 @@ if (config('app.scheduler_queue_worker')) {
         ->everyMinute()
         ->withoutOverlapping();
 }
+
+Schedule::command('queue:work --stop-when-empty --max-time=55')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

@@ -3,7 +3,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -36,6 +36,12 @@ const apps = computed(() => [
     href: "/utenti",
   },
   {
+    name: 'impostazioni.dialogs.mail_settings_title', 
+    logo: Mail,
+    desc: 'impostazioni.dialogs.mail_settings_description',
+    href: "/impostazioni/mail", 
+  },
+  {
     name: 'impostazioni.dialogs.cron_settings_title', 
     logo: Timer,
     desc: 'impostazioni.dialogs.cron_settings_description',
@@ -55,7 +61,7 @@ const apps = computed(() => [
           ? trans('impostazioni.dialogs.updates_desc_available', { version: newVersion.value })
           : trans('impostazioni.dialogs.updates_desc_latest'),
       href: '/system/upgrade',
-      highlight: updateAvailable.value, // Flag attivato se c'è update
+      highlight: updateAvailable.value, 
   }
 ])
 

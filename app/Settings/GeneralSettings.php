@@ -10,7 +10,7 @@ class GeneralSettings extends Settings
     public string $language = 'it';
     public string $version = '1.7.0';
     public bool $external_cron_enabled = false;
-    public string $external_cron_token;
+    public ?string $external_cron_token = null;
     
     public static function group(): string
     {

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
+use App\Http\Controllers\Impostazioni\MailSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
@@ -28,6 +29,16 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
         ->name('impostazioni.cron.regenerate'); 
+
+        // MAIL SETTINGS
+    Route::get('impostazioni/mail', [MailSettingsController::class, 'edit'])
+        ->name('impostazioni.mail'); 
+
+    Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
+        ->name('admin.settings.mail.update'); 
+
+    Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
+        ->name('admin.settings.mail.test');
     
     Route::redirect('settings', 'settings/profile');
 

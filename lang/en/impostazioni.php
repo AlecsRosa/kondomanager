@@ -12,25 +12,55 @@ return [
     'error_save_cron_settings'                => 'An error occurred while saving cloud automation settings',
     'success_regenerate_cron_token'           => 'Webhook token regenerated successfully',
     'error_regenerate_cron_token'             => 'An error occurred while regenerating the token',
+    
+    'success_save_mail_settings'              => 'SMTP configuration saved successfully',
+    'error_save_mail_settings'                => 'An error occurred while saving the SMTP configuration',
+
+    /* ------------------------------------------------------------------
+     | Mail Status Badge
+     | ------------------------------------------------------------------ */
+    'mail_status' => [
+        'database' => 'Database SMTP',
+        'env'      => '.env Configuration',
+        'log'      => 'Safe Mode (Log)',
+    ],
+
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
-        'settings_head'                => 'Impostazioni',
+        'settings_head'                => 'Settings',
         'settings_title'               => 'Application settings',
         'settings_description'         => 'Below is a list of all the configurable settings for the application',
         'general_settings_title'       => 'General settings',
         'general_settings_description' => 'On this page you can manage the general settings of the application',
         'cron_settings_title'          => 'Cloud automation (External cron)',
         'cron_settings_description'    => 'Use this feature if your hosting does not support cron jobs every minute. Supported services: cron-job.org',
+        
+        'mail_settings_title'          => 'Email Configuration (SMTP)',
+        'mail_settings_description'    => 'Configure server parameters for sending installments, reminders, and official communications.',
     ],
     /* ------------------------------------------------------------------
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
-        'manage'     => 'Manage',
-        'settings'   => 'Settings',
-        'update_now' => 'Update now',
+        'manage'             => 'Manage',
+        'settings'           => 'Settings',
+        'update_now'         => 'Update now',
+        'back_to_settings'   => 'Back to settings',
+        
+        'mail_host'          => 'SMTP Server (Host)',
+        'mail_port'          => 'SMTP Port',
+        'mail_username'      => 'Username / Email',
+        'mail_password'      => 'SMTP Password',
+        'mail_encryption'    => 'Encryption (Security)',
+        'mail_from_address'  => 'Sender Email address',
+        'mail_from_name'     => 'Sender Display Name',
+        'save_settings'      => 'Save configuration',
+        'send_test'          => 'Send test email',
+
+        'enable_db_settings' => 'Enable Database Configuration',
+        'enable_db_description' => 'If disabled, the system will use parameters defined in the .env file (e.g., Mailtrap).',
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -45,14 +75,19 @@ return [
         'updates_title'                 => 'System updates',
         'updates_desc_available'        => 'New version available: :version',
         'updates_desc_latest'           => 'System is up to date with the latest version',
-        'language_settings_title'       => 'Application language',
-        'language_settings_description' => 'Select the primary language for the entire application',
-        'default_building_title'        => 'Open building on login',
-        'default_building_description'  => 'If enabled, users will be automatically redirected to their default building after login',
-        'select_building_title'         => 'Default building',
-        'select_building_description'   => 'Choose which building should open automatically after login',
-        'user_registration_title'       => 'Enable user registration',
-        'user_registration_description' => 'If enabled, visitors can create a new account from the home page',
+        
+        'mail_settings_title'           => 'SMTP Configuration',
+        'mail_settings_description'     => 'Manage SMTP parameters, sender info, and notification testing.',
+        'mail_guide_title'              => 'Configuration Guide',
+        'mail_guide_gmail'              => 'Gmail: Enable 2-Step Verification and generate an "App Password". Use port 587 with TLS.',
+        'mail_guide_smtp2go'            => 'Free Servers: If using Altervista, we recommend SMTP2Go to bypass port blocks.',
+        'mail_guide_domain'             => 'Pro Tip: Purchase a domain and validate DNS (SPF/DKIM) to prevent emails from going to spam.',
+        
+        'test_success_title'            => 'Connection Successful',
+        'test_success_message'          => 'The test email has been successfully sent to the recipient.',
+        'test_error_title'              => 'Connection Error',
+        'test_error_message'            => 'Unable to connect to the SMTP server. Check parameters and try again.',
+
         'cron_settings_title'           => 'Cloud automation',
         'cron_settings_description'     => 'Configure cron-job.org for shared hosting',
         'enable_external_scheduler_title' => 'Enable external scheduler',
@@ -70,29 +105,24 @@ return [
         'select_building' => 'Select building',
         'select_language' => 'Select language',
         'search_settings' => 'Filter settings...',
+        'mail_host'       => 'e.g., smtp.gmail.com',
+        'mail_from_address' => 'e.g., info@your-domain.com',
+        'test_recipient'  => 'Enter email for testing',
+        
         'language' => [
             'it' => 'Italian',
             'en' => 'English',
             'pt' => 'Portuguese',
         ],
     ],
-    /* ------------------------------------------------------------------
-     | Action buttons (toolbar, card actions, etc.)
-     | ------------------------------------------------------------------ */
     'actions' => [
         'save_settings'    => 'Save settings',
         'copy_url'         => 'Copy URL',
         'regenerate_token' => 'Regenerate token',
     ],
-    /* ------------------------------------------------------------------
-     | Confirmations
-     | ------------------------------------------------------------------ */
     'confirmations' => [
         'regenerate_token' => 'Are you sure? You will need to update the URL on cron-job.org',
     ],
-    /* ------------------------------------------------------------------
-    | Sidebar navigation
-    | ------------------------------------------------------------------ */
     'sidebar' => [
         'users'         => 'Users',
         'roles'         => 'Roles',
