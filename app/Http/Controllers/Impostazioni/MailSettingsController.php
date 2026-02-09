@@ -23,17 +23,31 @@ class MailSettingsController extends Controller
         return Inertia::render('impostazioni/impostazioniMail', [
             'settings' => $settings,
             'mail_host_env' => config('mail.mailers.smtp.host'),
+            'password_set' => !empty($settings->mail_password),
         ]);
     }
 
     public function update(Request $request, MailSettings $settings)
     {
-        $request->validate([
+        // 1. Definiamo le regole base
+        $rules = [
             'mail_enabled' => 'boolean',
             'mail_host' => 'required_if:mail_enabled,true',
             'mail_port' => 'required|numeric',
             'mail_from_address' => 'required|email',
-        ]);
+        ];
+
+        // 2. Logica condizionale per la Password
+        // Se abiliti la mail E non hai già una password salvata nel DB, allora è obbligatoria.
+        // Altrimenti (se c'è già o se disabiliti), è opzionale (nullable).
+        if ($request->mail_enabled && empty($settings->mail_password)) {
+            $rules['mail_password'] = 'required';
+        } else {
+            $rules['mail_password'] = 'nullable';
+        }
+
+        // 3. Validazione
+        $request->validate($rules);
 
         try {
             $settings->mail_enabled = $request->mail_enabled;
@@ -44,10 +58,9 @@ class MailSettingsController extends Controller
             $settings->mail_from_address = $request->mail_from_address;
             $settings->mail_from_name = $request->mail_from_name;
 
+            // Salviamo la password solo se l'utente ne ha digitata una nuova
             if ($request->filled('mail_password')) {
-
                 $settings->mail_password = Crypt::encryptString($request->mail_password);
-
             }
 
             $settings->save();
@@ -61,14 +74,27 @@ class MailSettingsController extends Controller
         }
     }
 
-    public function testConnection(Request $request)
+    public function testConnection(Request $request, MailSettings $settings)
     {
         try {
+            // RECUPERO INTELLIGENTE PASSWORD
+            // Usiamo quella del form se c'è, altrimenti proviamo a decriptare quella del DB
+            $password = $request->mail_password;
+
+            if (empty($password) && !empty($settings->mail_password)) {
+                try {
+                    $password = Crypt::decryptString($settings->mail_password);
+                } catch (\Exception $e) {
+                    // Fallback se non era criptata (vecchi dati o errore)
+                    $password = $settings->mail_password;
+                }
+            }
+
             Config::set('mail.default', 'smtp');
             Config::set('mail.mailers.smtp.host', $request->mail_host);
             Config::set('mail.mailers.smtp.port', (int) $request->mail_port);
             Config::set('mail.mailers.smtp.username', $request->mail_username);
-            Config::set('mail.mailers.smtp.password', $request->mail_password);
+            Config::set('mail.mailers.smtp.password', $password); // Usiamo la variabile risolta sopra
             Config::set('mail.mailers.smtp.encryption', $request->mail_encryption);
             Config::set('mail.from.address', $request->mail_from_address);
             Config::set('mail.from.name', $request->mail_from_name ?? 'Kondomanager Test');
@@ -80,9 +106,8 @@ class MailSettingsController extends Controller
             return response()->json(['success' => true]);
             
         } catch (\Exception $e) {
-
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-
         }
     }
+
 }

@@ -47,7 +47,7 @@ return [
         'manage'             => 'Gestisci',
         'settings'           => 'Impostazioni',
         'update_now'         => 'Aggiorna ora',
-        'back_to_settings'   => 'Torna alle impostazioni',
+        'back_to_settings'   => 'Impostazioni',
         
         'mail_host'          => 'Server SMTP (Host)',
         'mail_port'          => 'Porta SMTP',
@@ -58,9 +58,10 @@ return [
         'mail_from_name'     => 'Nome visualizzato mittente',
         'save_settings'      => 'Salva configurazione',
         'send_test'          => 'Invia email di test',
+        'password_is_set'    => 'Password impostata e sicura', 
 
         'enable_db_settings' => 'Attiva configurazione da Database',
-        'enable_db_description' => 'Se disattivato, il sistema userà i parametri definiti nel file .env (es. Mailtrap).',
+        'enable_db_description' => 'Se disattivato, il sistema userà i parametri definiti nel file .env',
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -82,11 +83,25 @@ return [
         'mail_guide_gmail'              => 'Gmail: Attiva la verifica in 2 passaggi e genera una "Password per le App". Usa porta 587 con TLS.',
         'mail_guide_smtp2go'            => 'Server Gratuiti: Se usi Altervista, ti consigliamo SMTP2Go per superare i blocchi delle porte.',
         'mail_guide_domain'             => 'Consiglio Pro: Usa un dominio professionale validato per evitare lo Spam.',
+
+        'mail_info_title'               => 'Come funziona l\'invio email?',
+        'mail_info_description'         => 'Kondomanager utilizza un motore di invio ibrido. Puoi decidere se utilizzare la configurazione predefinita del server (<strong>Env</strong>) oppure configurare un tuo server SMTP personale (<strong>Database</strong>).<br><br>Attiva lo switch qui sotto solo se possiedi credenziali SMTP personalizzate (es. Gmail, Sendgrid, SMTP2Go) e non puoi modificare il file .env.',
+        'mail_legend_title'             => 'Legenda Stati',
+        'mail_legend_database'          => 'Usa le tue credenziali personalizzate (Prioritario).',
+        'mail_legend_env'               => 'Usa la configurazione di default del server.',
+        'mail_legend_log'               => 'Invio email disabilitato (Solo file di log).',
         
+        'test_header'                   => 'Test di invio immediato',
         'test_success_title'            => 'Connessione riuscita',
         'test_success_message'          => 'L\'email di test è stata inviata correttamente al destinatario.',
         'test_error_title'              => 'Errore di connessione',
         'test_error_message'            => 'Impossibile connettersi al server SMTP. Controlla i parametri e riprova.',
+
+        'cron_info_title'               => 'Cos\'è l\'Automazione Cloud?',
+        'cron_info_description'         => 'Kondomanager esegue operazioni pianificate in background (es. generazione rate, invio email).<br><br>Di norma, il server gestisce tutto autonomamente. Attiva questa opzione <strong>SOLO</strong> se sei su un <strong>Hosting Condiviso</strong> che non permette di configurare il "Crontab" di sistema via terminale.',
+        'cron_legend_title'             => 'Modalità Operativa',
+        'cron_legend_external'          => 'Webhook (Esterno): Il sistema attende un segnale da cron-job.org.',
+        'cron_legend_internal'          => 'System Cron (Interno): Il server gestisce i processi autonomamente.',
 
         'cron_settings_title'           => 'Automazione cloud',
         'cron_settings_description'     => 'Configura cron-job.org per hosting condivisi',
@@ -106,6 +121,12 @@ return [
         'select_language' => 'Seleziona lingua',
         'search_settings' => 'Filtra impostazioni...',
         'mail_host'       => 'es. smtp.gmail.com',
+        
+        // NUOVI placeholder dinamici per la password
+        'mail_password'       => 'Inserisci la password SMTP', 
+        'mail_password_keep'  => 'Lascia vuoto per mantenere la password attuale', 
+        'mail_password_enter' => 'Inserisci la password SMTP', 
+        
         'mail_from_address' => 'es. amministrazione@studio-rossi.it',
         'test_recipient'  => 'Inserisci l\'email per il test',
         

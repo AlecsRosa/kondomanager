@@ -3,11 +3,14 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { computed, ref } from 'vue'
 import { Head, useForm, Link, usePage } from '@inertiajs/vue3';
 import { 
-    Mail, Send, Save, ShieldCheck, AlertCircle, Eye, EyeOff, Settings, Loader2
+    Mail, Send, Save, ShieldCheck, AlertCircle, Eye, EyeOff, Settings, Loader2, Info
 } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import Alert from '@/components/Alert.vue'
 import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import InputError from '@/components/InputError.vue';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { trans } from 'laravel-vue-i18n';
 import axios from 'axios';
@@ -18,6 +21,7 @@ const flashMessage = computed(() => page.props.flash?.message)
 const props = defineProps({
     settings: Object,
     mail_host_env: String,
+    password_set: Boolean,
 });
 
 const form = useForm({
@@ -37,6 +41,13 @@ const testEmail = ref('');
 const testStatus = ref(null);
 const errorMessage = ref('');
 
+// Calcolo dinamico del placeholder
+const passwordPlaceholder = computed(() => {
+    return props.password_set 
+        ? trans('impostazioni.placeholder.mail_password_keep') 
+        : trans('impostazioni.placeholder.mail_password_enter'); 
+});
+
 const mailStatus = computed(() => {
     if (form.mail_enabled && form.mail_host) {
         return { label: trans('impostazioni.mail_status.database'), color: 'text-green-600 bg-green-100 border-green-200 dark:bg-green-900/30' };
@@ -50,11 +61,8 @@ const mailStatus = computed(() => {
 const submit = () => {
     form.post(route('admin.settings.mail.update'), {
         preserveScroll: true,
+        onSuccess: () => form.reset('mail_password'), 
     });
-};
-
-const toggleMailEnabled = () => {
-    submit();
 };
 
 const runTest = async () => {
@@ -98,15 +106,22 @@ const runTest = async () => {
             </div>
 
             <Card class="border shadow-none p-4">
-                <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-6">
+                <div class="flex flex-col w-full sm:flex-row sm:justify-end gap-2 mb-6">
+
+                    <Button @click="submit" :disabled="form.processing" class="w-full sm:w-auto gap-2">
+                        <Save class="w-4 h-4" />
+                        <span>{{ trans('impostazioni.label.save_settings') }}</span>
+                    </Button>
+
                     <Link
                         as="button"
                         href="/impostazioni"
-                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-secondary px-3 py-2 text-sm font-medium hover:bg-secondary/80 text-foreground"
+                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
                     >
                         <Settings class="w-4 h-4" />
                         <span>{{ trans('impostazioni.label.back_to_settings') }}</span>
                     </Link>
+
                 </div>
 
                 <CardContent class="space-y-6 p-0">
@@ -115,101 +130,167 @@ const runTest = async () => {
                         <Alert :message="flashMessage.message" :type="flashMessage.type" />
                     </div>
 
-                    <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4 bg-secondary/10">
-                        <div class="flex-1">
-                            <label class="block text-sm font-medium leading-none mb-1">
-                                {{ trans('impostazioni.label.enable_db_settings') }}
-                            </label>
-                            <p class="text-sm text-muted-foreground">
-                                {{ trans('impostazioni.label.enable_db_description') }}
-                            </p>
+                    <div class="rounded-lg border bg-muted/40 p-4 mb-6">
+                        <div class="flex items-start gap-4">
+                            <Info class="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                            <div class="grid gap-6 md:grid-cols-2 w-full">
+                                <div>
+                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
+                                        {{ trans('impostazioni.dialogs.mail_info_title') }}
+                                    </h4>
+                                    <p 
+                                        class="text-xs text-muted-foreground leading-relaxed" 
+                                        v-html="trans('impostazioni.dialogs.mail_info_description')"
+                                    ></p>
+                                </div>
+                                <div class="text-xs space-y-2 border-l pl-4 md:border-l-0 md:pl-0 md:border-l-0">
+                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
+                                        {{ trans('impostazioni.dialogs.mail_legend_title') }}
+                                    </h4>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-green-600"></span>
+                                        <span class="font-medium">Database:</span>
+                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.mail_legend_database') }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                        <span class="font-medium">Env:</span>
+                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.mail_legend_env') }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
+                                        <span class="font-medium">Log:</span>
+                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.mail_legend_log') }}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <Switch 
-                            v-model="form.mail_enabled" 
-                            @update:model-value="toggleMailEnabled"
-                        />
                     </div>
 
-                    <div class="flex items-start gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-800 dark:text-orange-200 text-sm border border-orange-200 dark:border-orange-800">
-                        <AlertCircle class="h-5 w-5 shrink-0 mt-0.5" />
-                        <div>
-                            <p class="font-semibold mb-1">{{ trans('impostazioni.dialogs.mail_guide_title') }}</p>
-                            <ul class="list-disc list-inside text-orange-700 dark:text-orange-300 space-y-1">
-                                <li>{{ trans('impostazioni.dialogs.mail_guide_gmail') }}</li>
-                                <li>{{ trans('impostazioni.dialogs.mail_guide_smtp2go') }}</li>
-                                <li>{{ trans('impostazioni.dialogs.mail_guide_domain') }}</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <form @submit.prevent="submit" class="space-y-4" :class="{ 'opacity-60 transition-opacity': !form.mail_enabled }">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div class="sm:col-span-2">
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_host') }}</label>
-                                <input v-model="form.mail_host" type="text" :placeholder="trans('impostazioni.placeholder.mail_host')" class="w-full text-sm bg-background border border-input rounded-md px-3 py-2" />
+                    <form @submit.prevent="submit" class="space-y-6">
+                        
+                        <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4 bg-background shadow-sm">
+                            <div class="flex-1">
+                                <Label class="block text-sm font-medium leading-none mb-1">
+                                    {{ trans('impostazioni.label.enable_db_settings') }}
+                                </Label>
+                                <p class="text-sm text-muted-foreground">
+                                    {{ trans('impostazioni.label.enable_db_description') }}
+                                </p>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_port') }}</label>
-                                <input v-model="form.mail_port" placeholder="587" class="w-full text-sm bg-background border border-input rounded-md px-3 py-2" />
-                            </div>
+                            <Switch v-model="form.mail_enabled" />
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_username') }}</label>
-                                <input v-model="form.mail_username" type="text" class="w-full text-sm bg-background border border-input rounded-md px-3 py-2" />
+                        <div v-if="form.mail_enabled" class="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                            
+                            <div class="flex items-start gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-800 dark:text-orange-200 text-sm border border-orange-200 dark:border-orange-800">
+                                <AlertCircle class="h-5 w-5 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="font-semibold mb-1">{{ trans('impostazioni.dialogs.mail_guide_title') }}</p>
+                                    <ul class="list-disc list-inside text-orange-700 dark:text-orange-300 space-y-1">
+                                        <li>{{ trans('impostazioni.dialogs.mail_guide_gmail') }}</li>
+                                        <li>{{ trans('impostazioni.dialogs.mail_guide_smtp2go') }}</li>
+                                        <li>{{ trans('impostazioni.dialogs.mail_guide_domain') }}</li>
+                                    </ul>
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_password') }}</label>
-                                <div class="relative">
-                                    <input 
-                                        v-model="form.mail_password" 
-                                        :type="showPassword ? 'text' : 'password'" 
-                                        class="w-full text-sm bg-background border border-input rounded-md px-3 py-2 pr-10"
-                                        placeholder="••••••••"
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div class="sm:col-span-2">
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_host') }}</Label>
+                                    <Input 
+                                        v-model="form.mail_host" 
+                                        type="text" 
+                                        :placeholder="trans('impostazioni.placeholder.mail_host')" 
+                                        class="w-full text-sm" 
                                     />
-                                    <button type="button" @click="showPassword = !showPassword" class="absolute right-3 top-2.5 text-muted-foreground">
-                                        <Eye v-if="!showPassword" class="h-4 w-4" />
-                                        <EyeOff v-else class="h-4 w-4" />
-                                    </button>
+                                    <InputError :message="form.errors.mail_host" />
+                                </div>
+                                <div>
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_port') }}</Label>
+                                    <Input 
+                                        v-model="form.mail_port" 
+                                        placeholder="587" 
+                                        class="w-full text-sm" 
+                                    />
+                                    <InputError :message="form.errors.mail_port" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_username') }}</Label>
+                                    <Input 
+                                        v-model="form.mail_username" 
+                                        type="text" 
+                                        class="w-full text-sm" 
+                                    />
+                                    <InputError :message="form.errors.mail_username" />
+                                </div>
+                                <div>
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_password') }}</Label>
+                                    <div class="relative">
+                                        <Input 
+                                            v-model="form.mail_password" 
+                                            :type="showPassword ? 'text' : 'password'" 
+                                            class="w-full text-sm pr-10"
+                                            :placeholder="passwordPlaceholder" 
+                                        />
+                                        <button 
+                                            type="button" 
+                                            @click="showPassword = !showPassword" 
+                                            class="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                            <Eye v-if="!showPassword" class="h-4 w-4" />
+                                            <EyeOff v-else class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <InputError :message="form.errors.mail_password" />
+                                    <p v-if="password_set && !form.mail_password" class="text-[11px] text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                                        <ShieldCheck class="w-3 h-3" />
+                                        {{ trans('impostazioni.label.password_is_set') }}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4 mt-4">
+                                <div>
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_encryption') }}</Label>
+                                    <select 
+                                        v-model="form.mail_encryption" 
+                                        class="w-full text-sm bg-background border border-input rounded-md px-3 py-2 h-[38px] focus:ring-2 focus:ring-ring focus:outline-none"
+                                    >
+                                        <option value="tls">TLS</option>
+                                        <option value="ssl">SSL</option>
+                                        <option value="null">Nessuna</option>
+                                    </select>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_address') }}</Label>
+                                    <Input 
+                                        v-model="form.mail_from_address" 
+                                        type="email" 
+                                        :placeholder="trans('impostazioni.placeholder.mail_from_address')" 
+                                        class="w-full text-sm" 
+                                    />
+                                    <InputError :message="form.errors.mail_from_address" />
                                 </div>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4 mt-4">
-                            <div>
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_encryption') }}</label>
-                                <select v-model="form.mail_encryption" class="w-full text-sm bg-background border border-input rounded-md px-3 py-2 h-[38px]">
-                                    <option value="tls">TLS</option>
-                                    <option value="ssl">SSL</option>
-                                    <option value="null">Nessuna</option>
-                                </select>
-                            </div>
-                            <div class="sm:col-span-2">
-                                <label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_address') }}</label>
-                                <input v-model="form.mail_from_address" type="email" :placeholder="trans('impostazioni.placeholder.mail_from_address')" class="w-full text-sm bg-background border border-input rounded-md px-3 py-2" />
-                            </div>
-                        </div>
-
-                        <div class="flex justify-end pt-2">
-                            <Button type="submit" :disabled="form.processing" class="gap-2">
-                                <Save class="w-4 h-4" />
-                                <span>{{ trans('impostazioni.label.save_settings') }}</span>
-                            </Button>
-                        </div>
                     </form>
 
-                    <div class="border-t pt-6 mt-6">
+                    <div v-if="form.mail_enabled" class="border-t pt-6 mt-6 animate-in fade-in duration-500">
                         <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
                             <Send class="w-4 h-4 text-primary" />
-                            Test di invio immediato
+                            {{ trans('impostazioni.dialogs.test_header') }}
                         </h3>
                         <div class="flex flex-col sm:flex-row gap-3">
-                            <input 
+                            <Input 
                                 v-model="testEmail" 
                                 type="email" 
                                 :placeholder="trans('impostazioni.placeholder.test_recipient')" 
-                                class="flex-1 text-sm bg-background border border-input rounded-md px-3 py-2"
+                                class="flex-1 text-sm"
                             />
                             <Button 
                                 variant="outline" 

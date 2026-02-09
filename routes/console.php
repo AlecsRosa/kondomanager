@@ -1,12 +1,6 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
-
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
 
 // ============================================================================
 // 1. MANUTENZIONE DATABASE (Garbage Collector)
@@ -35,14 +29,11 @@ Schedule::command('cronjob:update-ips')
 // ============================================================================
 // 4. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
 // ============================================================================
-// Si attiva solo se configurato in config/app.php
+// Si attiva SOLO se configurato in config/app.php.
+// Fondamentale per switchare tra Supervisor (false) e Hosting Condiviso (true).
 if (config('app.scheduler_queue_worker')) {
     Schedule::command('queue:work --stop-when-empty --max-time=55')
         ->everyMinute()
-        ->withoutOverlapping();
+        ->withoutOverlapping()
+        ->runInBackground();
 }
-
-Schedule::command('queue:work --stop-when-empty --max-time=55')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->runInBackground();

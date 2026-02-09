@@ -48,7 +48,7 @@ return [
         'settings'           => 'Settings',
         'update_now'         => 'Update now',
         'back_to_settings'   => 'Back to settings',
-        
+
         'mail_host'          => 'SMTP Server (Host)',
         'mail_port'          => 'SMTP Port',
         'mail_username'      => 'Username / Email',
@@ -58,9 +58,10 @@ return [
         'mail_from_name'     => 'Sender Display Name',
         'save_settings'      => 'Save configuration',
         'send_test'          => 'Send test email',
+        'password_is_set'    => 'Password set and secure',
 
         'enable_db_settings' => 'Enable Database Configuration',
-        'enable_db_description' => 'If disabled, the system will use parameters defined in the .env file (e.g., Mailtrap).',
+        'enable_db_description' => 'If disabled, the system will use parameters defined in the .env file',
     ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
@@ -81,12 +82,26 @@ return [
         'mail_guide_title'              => 'Configuration Guide',
         'mail_guide_gmail'              => 'Gmail: Enable 2-Step Verification and generate an "App Password". Use port 587 with TLS.',
         'mail_guide_smtp2go'            => 'Free Servers: If using Altervista, we recommend SMTP2Go to bypass port blocks.',
-        'mail_guide_domain'             => 'Pro Tip: Purchase a domain and validate DNS (SPF/DKIM) to prevent emails from going to spam.',
+        'mail_guide_domain'             => 'Pro Tip: Use a validated professional domain to avoid Spam.',
+
+        'mail_info_title'               => 'How does email sending work?',
+        'mail_info_description'         => 'Kondomanager uses a hybrid sending engine. You can choose to use the server default configuration (<strong>Env</strong>) or configure your own personal SMTP server (<strong>Database</strong>).<br><br>Activate the switch below only if you have custom SMTP credentials (e.g., Gmail, Sendgrid, SMTP2Go) and cannot modify the .env file.',
+        'mail_legend_title'             => 'Status Legend',
+        'mail_legend_database'          => 'Uses your custom credentials (Priority).',
+        'mail_legend_env'               => 'Uses the server default configuration.',
+        'mail_legend_log'               => 'Email sending disabled (Log file only).',
         
+        'test_header'                   => 'Immediate delivery test',
         'test_success_title'            => 'Connection Successful',
         'test_success_message'          => 'The test email has been successfully sent to the recipient.',
         'test_error_title'              => 'Connection Error',
         'test_error_message'            => 'Unable to connect to the SMTP server. Check parameters and try again.',
+
+        'cron_info_title'               => 'What is Cloud Automation?',
+        'cron_info_description'         => 'Kondomanager performs scheduled background tasks (e.g., generating installments, sending emails).<br><br>Normally, the server handles this autonomously. Enable this option <strong>ONLY</strong> if you are on <strong>Shared Hosting</strong> that does not allow configuring the system "Crontab" via terminal.',
+        'cron_legend_title'             => 'Operating Mode',
+        'cron_legend_external'          => 'Webhook (External): System waits for a signal from cron-job.org.',
+        'cron_legend_internal'          => 'System Cron (Internal): Server manages processes autonomously.',
 
         'cron_settings_title'           => 'Cloud automation',
         'cron_settings_description'     => 'Configure cron-job.org for shared hosting',
@@ -106,6 +121,12 @@ return [
         'select_language' => 'Select language',
         'search_settings' => 'Filter settings...',
         'mail_host'       => 'e.g., smtp.gmail.com',
+        
+        // NUOVI placeholder dinamici
+        'mail_password'       => 'Enter SMTP password',
+        'mail_password_keep'  => 'Leave empty to keep current password', 
+        'mail_password_enter' => 'Enter SMTP password', 
+
         'mail_from_address' => 'e.g., info@your-domain.com',
         'test_recipient'  => 'Enter email for testing',
         

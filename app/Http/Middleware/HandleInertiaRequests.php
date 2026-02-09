@@ -23,10 +23,6 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-        [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
-        
-        // Recuperiamo il locale impostato dal SetLocaleMiddleware
-    /*     $locale = app()->getLocale(); */
 
         $updateService = app(UpdateService::class);
 
@@ -85,7 +81,6 @@ class HandleInertiaRequests extends Middleware
                 'current_version' => config('app.version'),
             ],
 
-            'quote' => ['message' => trim($message), 'author' => trim($author)],
         ];
     }
 

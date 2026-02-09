@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings } from 'lucide-vue-next';
+import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
@@ -71,6 +71,38 @@ const copyToClipboard = () => {
                 </div>
                 
                 <CardContent class="space-y-4 p-0">
+
+                    <div class="rounded-lg border bg-muted/40 p-4 mb-6">
+                        <div class="flex items-start gap-4">
+                            <Info class="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                            <div class="grid gap-6 md:grid-cols-2 w-full">
+                                <div>
+                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
+                                        {{ trans('impostazioni.dialogs.cron_info_title') }}
+                                    </h4>
+                                    <p 
+                                        class="text-xs text-muted-foreground leading-relaxed" 
+                                        v-html="trans('impostazioni.dialogs.cron_info_description')"
+                                    ></p>
+                                </div>
+                                <div class="text-xs space-y-2 border-l pl-4 md:border-l-0 md:pl-0 md:border-l-0">
+                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
+                                        {{ trans('impostazioni.dialogs.cron_legend_title') }}
+                                    </h4>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                                        <span class="font-medium">Webhook:</span>
+                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_external') }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
+                                        <span class="font-medium">System Cron:</span>
+                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_internal') }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- TOGGLE SCHEDULER -->
                     <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
