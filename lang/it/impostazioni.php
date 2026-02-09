@@ -76,6 +76,14 @@ return [
         'updates_title'                 => 'Aggiornamenti sistema',
         'updates_desc_available'        => 'Nuova versione disponibile: :version',
         'updates_desc_latest'           => 'Il sistema è aggiornato all\'ultima versione',
+        'language_settings_title'       => 'Lingua applicazione',
+        'language_settings_description' => 'Seleziona la lingua principale per l\'applicazione',
+        'default_building_title'        => 'Apri condominio al login',
+        'default_building_description'  => 'Se attivato, l\'utente verrà reindirizzato direttamente al condominio selezionato',
+        'select_building_title'         => 'Condominio predefinito',
+        'select_building_description'   => 'Seleziona il condominio da aprire automaticamente il gestionale dopo il login',
+        'user_registration_title'       => 'Abilita registrazione utenti',
+        'user_registration_description' => 'Se attivato, gli utenti possono registrarsi dalla home page',
         
         'mail_settings_title'           => 'Configurazione SMTP',
         'mail_settings_description'     => 'Gestisci i parametri SMTP, mittente e test di invio notifiche.',
@@ -112,6 +120,9 @@ return [
         'webhook_url_badge'             => 'Segreto',
         'security_warning_title'        => 'Sicurezza IP attiva',
         'security_warning_description'  => 'Il sistema accetta chiamate solo dagli IP ufficiali di cron-job.org. Se usi un altro servizio, questa configurazione non funzionerà.',
+
+        'logs_settings_title'           => 'Audit & Logs di Sistema',
+        'logs_settings_description'     => 'Visualizza lo storico delle email inviate, le attività degli utenti e i log di sistema.',
     ],
     /* ------------------------------------------------------------------
      | Placeholders for inputs
