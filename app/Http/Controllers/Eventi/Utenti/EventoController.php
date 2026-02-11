@@ -20,7 +20,7 @@ use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
-use App\Traits\CalculatesFinancialWaterfall; // <--- IL NUOVO TRAIT
+use App\Traits\CalculatesFinancialWaterfall; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -36,7 +36,7 @@ use Illuminate\Support\Facades\DB;
 class EventoController extends Controller
 {
     use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
-    use CalculatesFinancialWaterfall; // <--- ATTIVAZIONE TRAIT
+    use CalculatesFinancialWaterfall;
 
     public function __construct(
         private RecurrenceService $recurrenceService,
@@ -51,16 +51,13 @@ class EventoController extends Controller
         Gate::authorize('view', $evento);
 
         $validated = $request->validated();
-
-        // Ho rimosso il dd('test'); qui
-
         $perPage = min((int) ($validated['per_page'] ?? config('pagination.default_per_page')), 100);
         $page = (int) ($validated['page'] ?? 1);
 
         try {
             $userData = $this->getUserCondominioData();
 
-            // 1. Recuperiamo gli eventi dal servizio ricorrenze
+            // 1. Recupero eventi (Calendario completo)
             $events = $this->recurrenceService->getEventsInNextDays(
                 days: 360,
                 filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
@@ -70,15 +67,36 @@ class EventoController extends Controller
                 condominioIds: $userData->condominioIds
             );
 
-            // 2. 🔥 APPLICAZIONE WATERFALL (Tramite Trait) 🔥
-            // Questa chiamata ora usa la funzione condivisa nel file App\Traits\CalculatesFinancialWaterfall.php
-            $processedCollection = $this->applyFinancialWaterfall(
-                $events->getCollection(), 
-                $userData->anagrafica->id
-            );
+            // 2. INTELLIGENZA: Selezioniamo solo i Piani Rate dell'Esercizio "Aperto"
+            // Questo esclude automaticamente i piani dell'anno scorso (2025)
+            // se l'esercizio 2025 è stato chiuso o se oggi siamo nel 2026.
             
-            // Reinseriamo i dati processati nel paginator
-            $events->setCollection($processedCollection);
+            // Recuperiamo gli esercizi aperti per i condomini dell'utente
+            $eserciziApertiIds = \App\Models\Esercizio::whereIn('condominio_id', $userData->condominioIds)
+                ->where('stato', 'aperto') // Assumendo che 'aperto' sia lo status attivo
+                ->pluck('id');
+
+            // Recuperiamo le Gestioni collegate a questi esercizi aperti
+            // (La relazione Esercizio -> Gestioni è ManyToMany o OneToMany a seconda del tuo schema,
+            // ma qui passiamo per la tabella pivot o diretta).
+            // Se PianoRate ha 'gestione_id', dobbiamo trovare le gestioni attive in questo esercizio.
+            
+            // Alternativa più diretta: Filtriamo i Piani Rate tramite la Gestione -> Esercizio
+            $activePianoRateIds = \App\Models\Gestionale\PianoRate::query()
+                ->whereIn('condominio_id', $userData->condominioIds)
+                ->whereHas('gestione.esercizi', function ($q) use ($eserciziApertiIds) {
+                    $q->whereIn('esercizi.id', $eserciziApertiIds);
+                })
+                ->pluck('id')
+                ->toArray();
+
+            // 3. APPLICAZIONE WATERFALL CON FILTRI
+            $this->applyFinancialWaterfall(
+                $events, 
+                $userData->anagrafica->id,
+                $userData->condominioIds,
+                $activePianoRateIds // <--- PASSIAMO SOLO I PIANI DELL'ANNO CORRENTE
+            );
 
         } catch (\Exception $e) {
             Log::error('Error getting user events: ' . $e->getMessage());

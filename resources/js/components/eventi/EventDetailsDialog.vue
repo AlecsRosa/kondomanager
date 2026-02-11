@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,7 +7,7 @@ import { useEventStyling } from '@/composables/useEventStyling';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Info, Clock, XCircle, Coins, RotateCcw } from 'lucide-vue-next'; 
+import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Info, Clock, XCircle, Coins, RotateCcw, History, TrendingDown } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3'; 
 
@@ -39,6 +40,7 @@ const importoOriginale = computed<number>(() => Number(props.evento?.meta?.total
 const importoRestante = computed<number>(() => props.evento?.meta?.importo_restante !== undefined ? Number(props.evento?.meta?.importo_restante) : importoOriginale.value);
 const importoPagato = computed<number>(() => Number(props.evento?.meta?.importo_pagato || 0));
 const arretratiPregressi = computed<number>(() => Number(props.evento?.meta?.arretrati_pregressi || 0));
+const saldoIncorporato = computed<number>(() => Number(props.evento?.meta?.saldo_incorporato || 0));
 // --- Riferimento Arretrati "Smart" ---
 const rifArretrati = computed<string>(() => {
     const raw = props.evento?.meta?.rif_arretrati || '';
@@ -83,6 +85,14 @@ const daysDiff = computed(() => { if (!props.evento?.start_time) return 0; retur
 const isExpired = computed(() => daysDiff.value < 0 && !isGeneratingCredit.value && !isFullyCoveredByCredit.value && !isPaid.value && !isReported.value && importoRestante.value > 0.01);
 const isEmitted = computed(() => props.evento?.meta?.is_emitted === true);
 
+// --- LOGICA UX: MESSAGGI DINAMICI PER CREDITO ---
+// Capire se questa rata è coperta specificamente dal "Tesoretto" dell'anno scorso
+const isSubsequentRataCoveredByInitialCredit = computed(() => 
+    isFullyCoveredByCredit.value &&          // La rata è coperta (verde)
+    saldoIncorporato.value < -0.01 &&        // C'era un credito iniziale forte
+    (props.evento?.meta?.numero_rata || 0) > 1 // Siamo dalla rata 2 in poi
+);
+
 const formatDate = (dateStr: string) => { if(!dateStr) return ''; return format(new Date(dateStr), "d MMMM yyyy", { locale: it }); };
 
 const reportPayment = () => {
@@ -107,16 +117,21 @@ interface ScontrinoItem {
 const scontrinoData = computed<ScontrinoItem[]>(() => {
     const quote = props.evento.meta?.dettaglio_quote || [];
     
-    // Calcolo Saldo Iniziale Globale
-    let saldoInizialeGlobale = 0;
-    quote.forEach((q: any) => { if (q.audit?.saldo_usato) saldoInizialeGlobale += Number(q.audit.saldo_usato); });
+    // FIX: Non calcoliamo più saldoInizialeGlobale sommando i 'saldo_usato' grezzi.
+    // Questo causava il raddoppio se più quote avevano lo stesso saldo di origine.
+    // Partiamo da 0 e lasciamo che sia il loop (qui sotto) a leggere il 
+    // 'credito_pregresso_usato' che il Backend ha iniettato nella prima quota.
     
-    let currentAvailableCredit = saldoInizialeGlobale;
+    let currentAvailableCredit = 0; 
 
     return quote.map((q: any) => {
         const quotaPura = Number(q.audit?.quota_pura !== undefined ? q.audit.quota_pura : q.importo);
         
+        // Qui leggiamo il valore "Waterfall" calcolato dal Trait (es. -10000 per Rata 1, -16671 per Rata 2)
         if (q.audit?.credito_pregresso_usato) {
+            // Nota: Se currentAvailableCredit è 0, lo sovrascriviamo o sommiamo.
+            // Dato che questo valore rappresenta lo "stato al momento 0 della rata",
+            // lo sommiamo (che equivale a settarlo se è la prima riga).
             currentAvailableCredit += Number(q.audit.credito_pregresso_usato);
         }
 
@@ -135,6 +150,7 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
         return item;
     });
 });
+
 </script>
 
 <template>
@@ -293,8 +309,35 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                     </div>
 
                     <div v-if="isCondomino">
-                        
-                        <div v-if="arretratiPregressi > 0.01" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+
+                        <div v-if="saldoIncorporato > 0.01" class="mb-3 p-4 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-3">
+                            <div class="p-1.5 bg-amber-100 rounded-full text-amber-600 shrink-0 mt-0.5">
+                                <History class="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-bold text-amber-800 mb-1">Saldo precedente incluso</h4>
+                                <p class="text-xs text-amber-700 leading-relaxed mb-2">
+                                    Questa rata include un saldo debitore di <span class="font-bold">{{ euro(saldoIncorporato) }}</span> dall'esercizio precedente.
+                                </p>
+                                <p class="text-xs text-amber-600/80">
+                                    Pagando questa rata regolarizzerai anche il debito passato.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div v-else-if="saldoIncorporato < -0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                            <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                <TrendingDown class="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-bold text-blue-800 mb-1">Sconto da credito precedente</h4>
+                                <p class="text-xs text-blue-700 leading-relaxed mb-2">
+                                    L'importo di questa rata è stato ridotto grazie a un credito di <span class="font-bold">{{ euro(Math.abs(saldoIncorporato)) }}</span> dall'esercizio precedente.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div v-else-if="arretratiPregressi > 0.01" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
                             <div class="p-1.5 bg-orange-100 rounded-full text-orange-600 shrink-0 mt-0.5">
                                 <AlertTriangle class="w-4 h-4" />
                             </div>
@@ -347,7 +390,23 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                             <div v-else><Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">{{ isProcessing ? 'Invio...' : 'Segnala pagamento saldo' }}</Button></div>
                         </div>
 
-                        <div v-else-if="isFullyCoveredByCredit" class="mb-3 flex items-center justify-between p-4 rounded-lg bg-emerald-50 border border-emerald-200"><div class="flex flex-col"><span class="text-emerald-700 flex items-center gap-2 font-semibold text-sm"><CheckCircle class="w-4 h-4" /> Coperta da Credito</span><span class="text-xs text-emerald-600/80 mt-1">Rata saldata col credito pregresso.</span></div><div class="text-right"><span class="text-xs uppercase text-emerald-600/70 font-bold block">Da versare</span><span class="font-bold text-xl text-emerald-700">€ 0,00</span></div></div>
+                        <div v-else-if="isFullyCoveredByCredit" class="mb-3 flex items-center justify-between p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+                            <div class="flex flex-col">
+                                <span class="text-emerald-700 flex items-center gap-2 font-semibold text-sm">
+                                    <CheckCircle class="w-4 h-4" /> Coperta da credito
+                                </span>
+                                <span class="text-xs text-emerald-600/80 mt-1">
+                                    {{ isSubsequentRataCoveredByInitialCredit 
+                                        ? "Rata coperta dal credito residuo dell'esercizio precedente." 
+                                        : "Rata saldata con il tuo credito residuo." 
+                                    }}
+                                </span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs uppercase text-emerald-600/70 font-bold block">Da versare</span>
+                                <span class="font-bold text-xl text-emerald-700">€ 0,00</span>
+                            </div>
+                        </div>
                         
                         <div v-else-if="isGeneratingCredit" class="mb-3 flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
                             <div class="flex flex-col">

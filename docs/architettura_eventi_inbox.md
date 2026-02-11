@@ -111,6 +111,22 @@ Il componente **`EventDetailsDialog.vue`** protegge l'utente da errori contabili
 
 **Trigger:** Il flag `is_emitted` passa a `true` quando l'admin esegue `EmissioneRateController`.
 
+**Logica "Financial Waterfall" (Smart Debt)**
+
+Il sistema applica un algoritmo a cascata (CalculatesFinancialWaterfall) per presentare il debito in modo psicologicamente corretto al condòmino:
+
+    Isolamento Contestuale: Il calcolo degli arretrati è segregato rigorosamente per Condominio.
+
+    Assorbimento Debito (Anti-Panico): Se una rata corrente include un saldo pregresso (es. conguaglio), il sistema nasconde l'avviso rosso "Arretrati" per evitare di sommare visivamente il vecchio debito al nuovo.
+
+    Visualizzazione a 3 Stati:
+
+        🔴 Arretrati: Rate precedenti non pagate e non incorporate.
+
+        🟠 Debito Incorporato: Rata corrente maggiorata da debito pregresso (Avviso Ambra).
+
+        🔵 Credito Usato: Rata corrente scontata da credito pregresso (Avviso Blu).
+
 ---
 
 ## 5. Modulo Incassi & Emissioni (Backend) 
@@ -172,5 +188,19 @@ Idee approvate per la prossima iterazione:
 | **Context Filter** | 🎯 | Avanzamento del filtro condominio per navigazione più granulare. |
 
 ---
+## [1.9.0] - 2026-02-11
 
-**Documentazione aggiornata al 19/01/2026.** *Sistema progettato per scalabilità, sicurezza contabile e massima efficienza operativa.*
+### 🐛 Bug Fixes (Critical)
+- **Financial Waterfall Isolation:** Risolto un bug critico nel calcolo degli arretrati che aggregava erroneamente i debiti di condomini diversi per lo stesso proprietario (Cross-Condominium Pollution).
+- **Ghost Data Handling:** Implementata logica di pulizia per ignorare rate orfane di piani cancellati o gestioni obsolete.
+
+### ✨ Features & Improvements
+- **Smart Debt Absorption:** Introdotta logica nel Trait `CalculatesFinancialWaterfall` per rilevare quando un saldo pregresso è incorporato nella rata corrente.
+    - *Effetto:* L'avviso "Arretrati" viene soppresso se il debito è già spalmato nella rata, evitando la "Doppia Imputazione" visiva.
+- **Frontend Intelligence (Vue):** Aggiunta gestione a 3 stati per il box avvisi finanziari nel dettaglio evento:
+    - 🟠 *Warning:* Saldo debitore incluso nella rata.
+    - 🔵 *Info:* Credito pregresso utilizzato.
+    - 🔴 *Danger:* Arretrati standard non coperti.
+- **Backend Refactor:** Il Trait di calcolo ora lavora rigorosamente in **centesimi (integer)** per evitare errori di virgola mobile sui totali aggregati.
+
+**Documentazione aggiornata al 11/02/2026.** *Sistema progettato per scalabilità, sicurezza contabile e massima efficienza operativa.*
