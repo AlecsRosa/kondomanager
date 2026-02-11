@@ -3,14 +3,17 @@
 namespace App\Models\Gestionale;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany; // <--- AGGIUNTO
+use Illuminate\Database\Eloquent\Relations\BelongsToMany; 
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Immobile;
 
-class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il nome
+class RataQuote extends Model 
 {
+    use HasFactory;
+
     protected $table = 'rate_quote';
 
     protected $fillable = [
@@ -23,7 +26,7 @@ class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il n
         'data_scadenza',
         'data_pagamento',
         'riferimento_pagamento',
-        'scrittura_contabile_id', // Usato solo in fase di emissione
+        'scrittura_contabile_id', 
         'note'
     ];
 
@@ -132,5 +135,10 @@ class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il n
         $this->data_pagamento = $ultimoMovimento?->data_competenza;
 
         $this->save();
+    }
+
+    protected static function newFactory()
+    {
+        return \Database\Factories\Gestionale\RataQuoteFactory::new();
     }
 }

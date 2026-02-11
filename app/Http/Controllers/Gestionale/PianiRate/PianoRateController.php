@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Helpers\MoneyHelper;
+use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Support\Facades\Auth; 
 
 class PianoRateController extends Controller
@@ -34,6 +35,7 @@ class PianoRateController extends Controller
     public function __construct(
         private PianoRateQuoteService $pianoRateQuoteService,
         private PianoRateCreatorService $pianoRateCreatorService,
+        private SaldoEsercizioService $saldoService, 
     ) {}
 
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
@@ -73,12 +75,18 @@ class PianoRateController extends Controller
             ->with(['esercizi' => fn($q) => $q->where('esercizio_id', $esercizio->id)])
             ->get();
 
+        // --- [MODIFICA] Calcolo Info Saldo per Alert ---
+        // Passiamo null per ottenere il saldo GLOBALE del condominio
+        $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
+        // ----------------------------------------------
+
         return Inertia::render('gestionale/pianiRate/PianiRateNew', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'condomini'  => $condomini,
             'gestioni'   => $gestioni,
+            'saldoInfo'  => $saldoInfo, 
         ]);
     }
 
@@ -90,7 +98,24 @@ class PianoRateController extends Controller
 
             DB::beginTransaction();
 
+            // Recuperiamo la gestione per i controlli successivi e per il lock
+            $gestione = Gestione::findOrFail($validated['gestione_id']);
+
             $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
+
+            // --- [MODIFICA] INIZIO PROTEZIONE SALDO ---
+            // Calcoliamo se il saldo è applicabile a livello globale
+            $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
+
+            // BLOCCO PREVENTIVO: Se il saldo NON è applicabile (già usato) MA esiste un importo da spalmare (!= 0),
+            // impediamo la creazione per evitare che il service lo applichi di nuovo erroneamente.
+            if (!$saldoInfo['applicabile'] && $saldoInfo['saldo'] != 0) {
+                DB::rollBack();
+                return back()
+                    ->withInput()
+                    ->with($this->flashError('ATTENZIONE: ' . $saldoInfo['motivo'] . ' Impossibile applicare nuovamente i saldi.'));
+            }
+            // --- FINE PROTEZIONE SALDO ---
 
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
 
@@ -102,6 +127,13 @@ class PianoRateController extends Controller
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
             }
+
+            // --- [MODIFICA] MARCATURA GESTIONE (LOCK) ---
+            // Se abbiamo applicato un saldo diverso da zero, marchiamo questa gestione come "proprietaria" dei saldi
+            if ($saldoInfo['applicabile'] && $saldoInfo['saldo'] != 0) {
+                $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
+            }
+            // -------------------------------------
 
             $statistiche = [];
 
@@ -119,7 +151,8 @@ class PianoRateController extends Controller
 
             Log::error("Errore creazione piano rate", ['errore' => $e->getMessage()]);
 
-            return back()->withInput()->with('error', $e->getMessage());
+            // [MODIFICA] Uso del trait flashError per consistenza
+            return back()->withInput()->with($this->flashError($e->getMessage()));
         }
     }
 

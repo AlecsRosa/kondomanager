@@ -24,8 +24,8 @@ class GeneratePianoRateAction
     {
         Log::info("=== GENERAZIONE PIANO RATE INIZIATA ===");
 
-        // FIX: CARICA LA RICORRENZA!
-        $pianoRate->load('ricorrenza');
+        // FIX: CARICA LA RICORRENZA E LA GESTIONE AGGIORNATA
+        $pianoRate->load(['ricorrenza', 'gestione']);
 
         $gestione = $pianoRate->gestione;
 
@@ -35,7 +35,16 @@ class GeneratePianoRateAction
         // ORA: Passiamo anche il piano rate per attivare il filtro
         $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
 
-        $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
+        // --- [MODIFICA] SICUREZZA SALDI ---
+        // Calcoliamo i saldi SOLO SE questa gestione è stata autorizzata (flag nel DB)
+        // Se stiamo rigenerando una straordinaria, questo impedirà il ricalcolo dei debiti pregressi.
+        if ($gestione->saldo_applicato) {
+            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
+        } else {
+            $saldi = []; // Nessun saldo da applicare
+            Log::info("Generazione: Saldi ignorati per gestione {$gestione->id} (saldo_applicato = false)");
+        }
+        // ----------------------------------
 
         $dateRate = $this->dateRateAction->execute($pianoRate, $gestione);
 

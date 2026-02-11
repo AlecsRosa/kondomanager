@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { 
     AlertCircle, CheckCircle2, Calculator, RotateCcw, 
     User, Building, ArrowRight, Euro, FileText, Receipt, 
-    ArrowRightLeft, Info, Coins // Aggiunta icona Coins
+    ArrowRightLeft, Info, Coins 
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { usePermission } from "@/composables/permissions";
@@ -154,7 +154,7 @@ const parseResiduoQuota = (val: any) => {
     <Head title="Registra Incasso" />
 
     <GestionaleLayout>
-        <div class="space-y-4 max-w-7xl mx-auto px-4 py-4 h-[calc(100vh-100px)] flex flex-col">
+        <div class="space-y-4 w-full mx-auto px-4 py-4 h-[calc(100vh-100px)] flex flex-col">
             
             <div class="flex items-center justify-between shrink-0">
                 <div>

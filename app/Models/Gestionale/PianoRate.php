@@ -8,6 +8,7 @@ use App\Models\Gestione;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Database\Factories\Gestionale\PianoRateFactory;
 
 class PianoRate extends Model
 {
@@ -69,6 +70,14 @@ class PianoRate extends Model
     {
         return $this->belongsToMany(Conto::class, 'piano_rate_capitoli', 'piano_rate_id', 'conto_id')
                     ->withTimestamps();
+    }
+
+    /**
+     * Collega esplicitamente la Factory corretta.
+     */
+    protected static function newFactory()
+    {
+        return PianoRateFactory::new();
     }
 
     

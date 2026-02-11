@@ -35,8 +35,7 @@ use Illuminate\Support\Facades\DB;
 
 class EventoController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
-    use CalculatesFinancialWaterfall;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData, CalculatesFinancialWaterfall;
 
     public function __construct(
         private RecurrenceService $recurrenceService,
