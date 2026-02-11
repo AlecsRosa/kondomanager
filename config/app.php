@@ -146,7 +146,7 @@ return [
     | - FALSE: Per VPS (con Supervisor). Non fa nulla (ci pensa Supervisor).
     |
     */
-    'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', true),
+    'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
 
     /*
     |--------------------------------------------------------------------------

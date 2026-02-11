@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Impostazioni;
 
 use App\Http\Controllers\Controller;
+use App\Models\MailLog;
 use App\Settings\MailSettings;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
@@ -106,6 +107,17 @@ class MailSettingsController extends Controller
             return response()->json(['success' => true]);
             
         } catch (\Exception $e) {
+
+            // Se fallisce, salviamo noi il log di errore manualmente
+            MailLog::create([
+                'recipient' => $request->test_email,
+                'subject'   => "Test Connessione (Fallito)",
+                'mailer'    => 'smtp',
+                'status'    => 'failed', 
+                'error_message' => $e->getMessage(),
+                'sent_at'   => now(),
+            ]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

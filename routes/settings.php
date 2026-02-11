@@ -3,6 +3,7 @@
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
+use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -39,6 +40,10 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
         ->name('admin.settings.mail.test');
+    
+    // LOGS & AUDIT
+    Route::get('logs', [LogsController::class, 'index'])
+        ->name('logs.index');
     
     Route::redirect('settings', 'settings/profile');
 

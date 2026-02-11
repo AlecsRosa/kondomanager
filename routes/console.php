@@ -32,7 +32,7 @@ Schedule::command('cronjob:update-ips')
 // Si attiva SOLO se configurato in config/app.php.
 // Fondamentale per switchare tra Supervisor (false) e Hosting Condiviso (true).
 if (config('app.scheduler_queue_worker')) {
-    Schedule::command('queue:work --stop-when-empty --max-time=55')
+    Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3 --backoff=10')
         ->everyMinute()
         ->withoutOverlapping()
         ->runInBackground();
