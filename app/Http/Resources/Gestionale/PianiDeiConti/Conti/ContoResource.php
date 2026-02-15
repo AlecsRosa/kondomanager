@@ -28,8 +28,8 @@ class ContoResource extends JsonResource
             'sottoconti' => $this->whenLoaded('sottoconti', function () {
                 return ContoResource::collection($this->sottoconti);
             }),
-                 // Tabelle millesimali associate al conto
-         'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
+            // Tabelle millesimali associate al conto
+            'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
                 return $this->tabelleMillesimali->map(function ($tabellaMillesimale) {
                     return [
                         'id' => $tabellaMillesimale->id,

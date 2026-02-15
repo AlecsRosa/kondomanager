@@ -220,6 +220,7 @@ class ContoController extends Controller
      * @return RedirectResponse
      * @version 1.9.0
      */
+
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
 
@@ -235,24 +236,59 @@ class ContoController extends Controller
                 
         }
 
-        // 2. [V1.9 INTEGRITY CHECK] Block if used in Active Plans
+        // 2. [INTEGRITY CHECK V1.9] Controllo Piani Rate (Double Lock)
         // This prevents the "Database Corruption" scenario where a Plan Rate points to a deleted ID.
-        $activePlans = $conto->pianiRate()
+        
+        // A. Controllo DIRETTO: Il conto specifico è usato in un piano attivo?
+        // (Es. Ho aggiunto "Pulizie Scale" direttamente al piano)
+        $pianiDiretti = $conto->pianiRate()
             ->where('piani_rate.attivo', true)
             ->pluck('nome')
-            ->unique()
             ->toArray();
 
-        if (!empty($activePlans)) {
+        // B. Controllo EREDITATO (Il Fix che mancava): Il PADRE è usato in un piano attivo?
+        // (Es. Ho aggiunto "Spese Generali" al piano -> "Pulizie Scale" è bloccato di conseguenza)
+        $pianiEreditati = [];
+        
+        if ($conto->parent_id) {
+            // Recuperiamo il padre
+            $parent = $conto->parent; // Usa la relazione definita nel model
+            
+            if ($parent) {
+                $pianiEreditati = $parent->pianiRate()
+                    ->where('piani_rate.attivo', true)
+                    ->pluck('nome')
+                    ->toArray();
+            }
+        }
 
-            $planNames = implode(', ', $activePlans);
+        // Uniamo i risultati. Se c'è anche solo un piano in una delle due liste, BLOCCA.
+        $tuttiPianiCoinvolti = array_unique(array_merge($pianiDiretti, $pianiEreditati));
+
+        if (!empty($tuttiPianiCoinvolti)) {
+            
+            $listaPiani = implode(', ', $tuttiPianiCoinvolti);
+
+            // Logica dei messaggi basata sulla provenienza del blocco
+            if (!empty($pianiEreditati)) {
+                // MESSAGGIO EREDITATO
+                $msg = __('gestionale.error_conto_inherited_lock', [
+                    'parent' => $parent->nome,
+                    'plans'  => $listaPiani
+                ]);
+            } else {
+                // MESSAGGIO DIRETTO
+                $msg = __('gestionale.error_conto_used_in_active_plans', [
+                    'plans' => $listaPiani
+                ]);
+            }
 
             return to_route('admin.gestionale.esercizi.piani-conti.show', [
                     'condominio' => $condominio->id,
                     'esercizio' => $esercizio->id,
                     'pianoConto' => $pianoConto->id,
                 ])
-                ->with($this->flashError(__('gestionale.error_piano_conto_has_active_plans') . " (Piani: $planNames)"));
+                ->with($this->flashError($msg));
         }
 
         try {

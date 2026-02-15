@@ -51,6 +51,7 @@ Abbiamo reso Kondomanager installabile ovunque, dai server dedicati agli hosting
 * **CRITICO - Cross-Condominium Pollution:** Risolto un bug grave nel calcolo degli arretrati che aggregava erroneamente i debiti dello stesso proprietario su condomini diversi.
 * **Duplicazione Saldi:** Risolto problema che impegnava irreversibilmente il saldo dell'esercizio precedente alla creazione del piano rate (ora gestito dinamicamente).
 * **Pulizia Rate Orfane:** Implementata logica automatica per ignorare rate collegate a piani cancellati o gestioni obsolete.
+* **Validazione Obbligatoria Tabelle:** Introdotta logica rigorosa per le voci di spesa (singole o sottoconti). Il campo "Tabella Millesimale" è ora obbligatorio per garantire che ogni spesa abbia sempre un criterio di ripartizione certo.
 
 ---
 

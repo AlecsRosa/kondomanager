@@ -40,6 +40,7 @@ class CreateContoRequest extends FormRequest
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
             'isSottoConto'           => 'required|boolean', 
+            // DEFAULT: nullable (perché se è capitolo non serve)
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
             'importo'                => 'required|string',
             'parent_id'              => 'nullable|exists:conti,id',
@@ -47,6 +48,8 @@ class CreateContoRequest extends FormRequest
 
         // Importo obbligatorio solo se non è un capitolo
         if (!$this->isCapitolo) {
+            // Se è una voce di spesa reale (anche sottoconto), DEVE avere una tabella
+            $rules['tabella_millesimale_id'] = 'required|exists:tabelle,id';
             $rules['percentuale_proprietario'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_inquilino'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_usufruttuario'] = 'required|numeric|min:0|max:100';
@@ -71,6 +74,7 @@ class CreateContoRequest extends FormRequest
             'percentuale_inquilino.required' => 'La percentuale inquilino è obbligatoria',
             'percentuale_usufruttuario.required' => 'La percentuale usufruttuario è obbligatoria',
             'tabella_millesimale_id.exists' => 'La tabella millesimale selezionata non è valida',
+            'tabella_millesimale_id.required' => 'La tabella millesimale è obbligatoria per le voci di spesa.',
         ];
     }
 

@@ -61,7 +61,6 @@ return [
     'success_update_piano_conto'            => "Il piano dei conti è stato aggiornato con successo.",
     'error_update_piano_conto'              => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
     'warning_all_gestioni_have_piano_conti' => "Tutte le gestioni di questo esercizio hanno già un Piano dei Conti associato.",
-    'error_piano_conto_has_active_plans'    => "Impossibile eliminare: alcune voci sono ancorate a Piani Rate attivi. Sgancia le voci o elimina i piani prima di procedere.",
     // Conti
     'success_create_conto'              => "La nuova voce di spesa è stata creata con successo.",
     'error_create_conto'                => "Si è verificato un errore durante la creazione della nuova voce di spesa.",
@@ -70,6 +69,8 @@ return [
     'success_update_conto'              => "La voce di spesa è stata aggiornata con successo.",
     'error_update_conto'                => "Si è verificato un errore durante l'aggiornamento della voce di spesa.",
     'error_conto_has_sottoconti'        => "Impossibile eliminare la voce di spesa perché contiene sottoconti. Elimina prima i sottoconti.",
+    'error_conto_used_in_active_plans'  => "Impossibile eliminare: la voce è utilizzata nei piani rate attivi: :plans.",
+    'error_conto_inherited_lock'        => "Impossibile eliminare: questa voce fa parte del gruppo ':parent' che è ancorato a: :plans.",
     // Piano rate
     'success_create_piano_rate'         => "Il nuovo piano rate è stato creato con successo.",
     'error_create_piano_rate'           => "Si è verificato un errore durante la creazione del nuovo piano rate.",

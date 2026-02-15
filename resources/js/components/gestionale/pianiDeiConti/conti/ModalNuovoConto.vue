@@ -108,10 +108,8 @@ const submit = () => {
     },
     onError: (errors) => {
       console.error('Errore nella creazione della voce di spesa:', errors)
-      form.reset()
       isCapitolo.value = false
       isSottoConto.value = false
-      closeModal()
     }
   })
 }
