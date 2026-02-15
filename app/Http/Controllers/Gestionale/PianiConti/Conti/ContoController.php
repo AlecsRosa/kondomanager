@@ -21,23 +21,16 @@ class ContoController extends Controller
      use HandleFlashMessages;
 
     /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        //
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
+     * Create a new expense item (Conto) within a specific chart of accounts.
+     *
+     * This method handles the creation of both "Capitoli" (parent groups) and "Voci di Spesa" (child items).
+     * It manages amount conversion (cents), hierarchy linking, and automatic millesimal table association.
+     *
+     * @param CreateContoRequest $request Validated form request data.
+     * @param Condominio $condominio Current condominium context.
+     * @param Esercizio $esercizio Current fiscal year context.
+     * @param PianoConto $pianoConto Parent chart of accounts.
+     * * @return RedirectResponse Redirects back to the chart view with success/error flash.
      */
     public function store(CreateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
@@ -152,23 +145,15 @@ class ContoController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
+     * Update an existing expense item.
+     *
+     * Updates details, hierarchy position, and amounts.
+     *
+     * @param UpdateContoRequest $request Validated update data.
+     * @param Condominio $condominio Context.
+     * @param Esercizio $esercizio Context.
+     * @param PianoConto $pianoConto Context.
+     * @param Conto $conto The item to update.
      */
     public function update(UpdateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
@@ -222,38 +207,23 @@ class ContoController extends Controller
     }
 
     /**
-     * Delete a specific expense from the chart of expenses.
+     * Delete an expense item (Conto).
+     * [V1.9 SECURITY UPDATE]
+     * Includes strict integrity checks to prevent "Phantom References" in accounting:
+     * 1. Hierarchy Check: Prevents deletion of Parent items that still have Children.
+     * 2. Active Plan Check: Prevents deletion of items currently anchored to an active Installment Plan.
      *
-     * This method handles the deletion of an expense from the chart of epenses.
-     * It performs the following operations:
-     * - Checks if the expense has sub-expenses (sottoconti) and prevents deletion if any exist
-     * - Deletes related records from the conto_tabella_millesimale pivot table
-     * - Deletes the account record
-     * - Handles success and error responses with appropriate flash messages
-     * - Implements database transaction for data consistency
-     *
-     * @param \App\Models\Condominio $condominio The condominium entity
-     * @param \App\Models\Esercizio $esercizio The fiscal year/exercise entity
-     * @param \App\Models\PianoConto $pianoConto The chart of expenses entity
-     * @param \App\Models\Conto $conto The expense to be deleted
-     * 
-     * @return \Illuminate\Http\RedirectResponse
-     * 
-     * @throws \Exception If an error occurs during the deletion process
-     * 
-     * @warning The account cannot be deleted if it has sub-accounts
-     * 
-     * @uses \Illuminate\Support\Facades\DB
-     * @uses \Illuminate\Support\Facades\Log
-     * @uses \App\Traits\HandleFlashMessages
-     * 
-     * @transaction
-     * The method uses database transactions to ensure data consistency
-     * when deleting related records from conto_tabella_millesimale table
+     * @param Condominio $condominio
+     * @param Esercizio $esercizio
+     * @param PianoConto $pianoConto
+     * @param Conto $conto The item to delete.
+     * @return RedirectResponse
+     * @version 1.9.0
      */
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
 
+    // 1. [HIERARCHY CHECK] Block if children exist
         if ($conto->sottoconti()->exists()) {
 
             return to_route('admin.gestionale.esercizi.piani-conti.show', [
@@ -262,16 +232,37 @@ class ContoController extends Controller
                     'pianoConto' => $pianoConto->id,
                 ])
                 ->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
+                
+        }
+
+        // 2. [V1.9 INTEGRITY CHECK] Block if used in Active Plans
+        // This prevents the "Database Corruption" scenario where a Plan Rate points to a deleted ID.
+        $activePlans = $conto->pianiRate()
+            ->where('piani_rate.attivo', true)
+            ->pluck('nome')
+            ->unique()
+            ->toArray();
+
+        if (!empty($activePlans)) {
+
+            $planNames = implode(', ', $activePlans);
+
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [
+                    'condominio' => $condominio->id,
+                    'esercizio' => $esercizio->id,
+                    'pianoConto' => $pianoConto->id,
+                ])
+                ->with($this->flashError(__('gestionale.error_piano_conto_has_active_plans') . " (Piani: $planNames)"));
         }
 
         try {
-
             DB::beginTransaction();
 
-            DB::table('conto_tabella_millesimale')
-                ->where('conto_id', $conto->id)
-                ->delete();
+            // Detach Millesimal Tables (Clean Pivot)
+            // Assuming relationships are defined in Conto model: public function tabelle() { ... }
+            $conto->tabelle()->detach(); 
 
+            // Delete the item
             $conto->delete();
 
             DB::commit();
@@ -284,7 +275,7 @@ class ContoController extends Controller
                 ->with($this->flashSuccess(__('gestionale.success_delete_conto')));
 
         } catch (\Exception $e) {
-
+            
             DB::rollBack();
             
             Log::error("Errore durante l'eliminazione della voce di spesa:", [
@@ -302,6 +293,7 @@ class ContoController extends Controller
                 ])
                 ->with($this->flashError(__('gestionale.error_delete_conto')));
         }
+
     }
 
 }

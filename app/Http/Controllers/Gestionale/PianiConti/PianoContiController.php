@@ -354,6 +354,7 @@ class PianoContiController extends Controller
      */
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
+
         try {
 
             $pianoConto->delete();

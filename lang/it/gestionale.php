@@ -60,7 +60,8 @@ return [
     'error_delete_piano_conto'              => "Si è verificato un errore durante l'eliminazione del piano dei conti.",
     'success_update_piano_conto'            => "Il piano dei conti è stato aggiornato con successo.",
     'error_update_piano_conto'              => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
-    'warning_all_gestioni_have_piano_conti' => "Tutte le gestioni di questo esercizio hanno già un Piano dei Conti associato.", // <--- NUOVA
+    'warning_all_gestioni_have_piano_conti' => "Tutte le gestioni di questo esercizio hanno già un Piano dei Conti associato.",
+    'error_piano_conto_has_active_plans'    => "Impossibile eliminare: alcune voci sono ancorate a Piani Rate attivi. Sgancia le voci o elimina i piani prima di procedere.",
     // Conti
     'success_create_conto'              => "La nuova voce di spesa è stata creata con successo.",
     'error_create_conto'                => "Si è verificato un errore durante la creazione della nuova voce di spesa.",

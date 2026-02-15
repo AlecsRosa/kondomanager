@@ -61,6 +61,7 @@ return [
     'success_update_piano_conto'            => "The piano dei conti has been updated successfully.",
     'error_update_piano_conto'              => "An error occurred while updating the piano dei conti.",
     'warning_all_gestioni_have_piano_conti' => "All management periods for this fiscal year already have an associated piano dei conti.", 
+    'error_piano_conto_has_active_plans'    => "Unable to delete: some accounts are linked to active rate plans. Unlink the accounts or delete the plans before proceeding.",
     // Conti
     'success_create_conto'              => "A new expense has been created successfully.",
     'error_create_conto'                => "An error occurred while creating the new expense.",
