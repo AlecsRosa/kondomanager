@@ -5,6 +5,7 @@ namespace App\Models\Gestionale;
 use App\Models\Tabella;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Conto extends Model
 {
@@ -73,5 +74,37 @@ class Conto extends Model
             'conto_id',
             'conto_tabella_millesimale_id'
         );
+    }
+
+    public function pianiRate(): BelongsToMany
+    {
+        return $this->belongsToMany(PianoRate::class, 'piano_rate_capitoli', 'conto_id', 'piano_rate_id');
+    }
+
+    /**
+     * Recupera tutti gli ID dei sottoconti (figli, nipoti, ecc.)
+     */
+    public function getAllChildrenIds(): array
+    {
+        $ids = [];
+        foreach ($this->sottoconti as $sottoconto) {
+            $ids[] = $sottoconto->id;
+            $ids = array_merge($ids, $sottoconto->getAllChildrenIds());
+        }
+        return $ids;
+    }
+
+    /**
+     * Recupera tutti gli ID dei padri (parent, grandparent, ecc.)
+     */
+    public function getAllAncestorsIds(): array
+    {
+        $ids = [];
+        $parent = $this->parent;
+        while ($parent) {
+            $ids[] = $parent->id;
+            $parent = $parent->parent;
+        }
+        return $ids;
     }
 }

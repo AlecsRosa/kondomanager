@@ -103,6 +103,14 @@ class PianoRateController extends Controller
 
             $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
 
+            // --- [NUOVA MODIFICA V1.9] PROTEZIONE OVERLAP CAPITOLI ---
+            if (!empty($validated['capitoli_ids'])) {
+                $this->pianoRateCreatorService->convalidaCapitoliUnici(
+                    (int) $validated['gestione_id'], 
+                    $validated['capitoli_ids']
+                );
+            }
+
             // --- [MODIFICA] INIZIO PROTEZIONE SALDO ---
             // Calcoliamo se il saldo è applicabile a livello globale
             $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
@@ -119,10 +127,21 @@ class PianoRateController extends Controller
 
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
 
-            // SALVATAGGIO CAPITOLI
-            if (!empty($validated['capitoli_ids'])) {
-                $pianoRate->capitoli()->sync($validated['capitoli_ids']);
+            // 3. INTELLIGENZA V1.9: Gestione Capitoli
+            $capitoliIds = $validated['capitoli_ids'] ?? [];
+
+            if (empty($capitoliIds)) {
+                // Cerchiamo tutti i capitoli RADICE che non sono ancora assegnati a nessun piano attivo
+                $capitoliIds = $gestione->pianoConto->conti()
+                    ->whereNull('parent_id')
+                    ->whereDoesntHave('pianiRate', function($q) {
+                        $q->where('attivo', true);
+                    })
+                    ->pluck('id')
+                    ->toArray();
             }
+
+            $pianoRate->capitoli()->sync($capitoliIds);
 
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
@@ -164,7 +183,33 @@ class PianoRateController extends Controller
         $pianoRate->load([
             'rate.rateQuote.anagrafica',
             'rate.rateQuote.immobile',
+            'gestione.pianoConto',
+            'capitoli.sottoconti'
         ]);
+
+        // --- CALCOLO VOCI ORFANE ---
+        $orfani = [];
+        if ($pianoRate->gestione && $pianoRate->gestione->pianoConto) {
+            
+            // Usiamo Eloquent per coerenza
+            $orfaniRaw = $pianoRate->gestione->pianoConto->conti()
+                ->whereNull('parent_id') // Solo capitoli radice
+                // Escludiamo quelli in QUESTO piano O in ALTRI piani attivi
+                // whereDoesntHave('pianiRate') esclude QUALSIASI piano attivo collegato, incluso questo.
+                ->whereDoesntHave('pianiRate', fn($q) => $q->where('piani_rate.attivo', true))
+                ->get();
+
+            $orfani = $orfaniRaw->map(fn($c) => [
+                'id' => $c->id,
+                'nome' => $c->nome,
+                'importo' => MoneyHelper::fromCents($c->importo)
+            ])->values()->toArray();
+        }
+
+        $coperturaData = [
+            'scoperto_count' => count($orfani),
+            'orfani' => $orfani
+        ];
 
         // --- INIZIO LOGICA MIGRAZIONE V1.8 verrà rimosso nella versione 1.9 ---
         $hasLegacyRates = $pianoRate->rate()
@@ -197,7 +242,8 @@ class PianoRateController extends Controller
             'ratePure'           => $ratePure, 
             'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
             'quotePerImmobile'   => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
-            'needsMigration'     => $needsMigration 
+            'needsMigration'     => $needsMigration,
+            'copertura'          => $coperturaData, 
         ]);
     }
 
@@ -258,5 +304,56 @@ class PianoRateController extends Controller
             'esercizio'  => $esercizio->id,
             'pianoRate'  => $pianoRate->id
         ])->with('success', $message);
+    }
+
+    /**
+     * Rimuove un capitolo di spesa dal piano rate e ricalcola.
+     */
+    public function detachCapitolo(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, $capitoloId)
+    {
+        // 1. BLOCCO TOTALE: Pagamenti
+        $haPagamenti = $pianoRate->rate()
+            ->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))
+            ->exists();
+
+        if ($haPagamenti) {
+            return back()->with($this->flashError(
+                "Impossibile modificare le voci di spesa: ci sono rate con incassi registrati."
+            ));
+        }
+
+        // 2. BLOCCO SOFT: Emissioni
+        $haEmissioni = $pianoRate->rate()
+            ->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))
+            ->exists();
+
+        if ($haEmissioni) {
+            return back()->with($this->flashError(
+                "Annulla le emissioni contabili delle rate prima di rimuovere voci di spesa."
+            ));
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Scolleghiamo la voce (detach rimuove la riga dalla pivot)
+            $pianoRate->capitoli()->detach($capitoloId);
+
+            // RIGENERAZIONE OBBLIGATORIA
+            // Cancelliamo le rate vecchie (sicuro perché siamo in bozza)
+            $pianoRate->rate()->delete();
+            
+            // Rigeneriamo il piano con le voci rimanenti
+            app(GeneratePianoRateAction::class)->execute($pianoRate);
+
+            DB::commit();
+
+            return back()->with($this->flashSuccess("Voce di spesa rimossa e piano ricalcolato correttamente."));
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error("Errore detach capitolo", ['msg' => $e->getMessage()]);
+            return back()->with($this->flashError("Errore durante l'operazione: " . $e->getMessage()));
+        }
     }
 }

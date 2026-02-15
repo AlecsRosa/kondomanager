@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\PianiRate;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -33,15 +34,21 @@ class PianoRateResource extends JsonResource
             'nome'         => $this->nome,
             'descrizione'  => $this->descrizione,
             'numero_rate'  => $this->numero_rate,
-            
-            // Nuovi campi per l'emissione
             'totale_piano' => $totalePiano,
             'stato'        => $statoValue,
-            
-            // Fallback per data_inizio se null (usa created_at o oggi)
             'data_inizio'  => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
-            
             'gestione'     => new GestioneResource($this->whenLoaded('gestione')),
+            'capitoli'     => $this->whenLoaded('capitoli', function() {
+                return $this->capitoli->map(fn($c) => [
+                    'id'          => $c->id,
+                    'nome'        => $c->nome,
+                    'importo'     => $c->sottoconti->isNotEmpty() 
+                                        ? (int) $c->sottoconti->sum('importo') 
+                                        : (int) $c->importo,
+                    'is_parent'   => $c->sottoconti->isNotEmpty(),
+                    'figli_names' => $c->sottoconti->pluck('nome')->join(', '),
+                ]);
+            }),
         ];
     }
 }

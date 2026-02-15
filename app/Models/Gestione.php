@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Gestionale\PianoConto;
+use App\Models\Gestionale\PianoRate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -43,5 +44,14 @@ class Gestione extends Model
     public function pianoConto() 
     {
         return $this->hasOne(PianoConto::class); 
+    }
+
+    /**
+     * I piani rate associati a questa gestione.
+     */
+    public function pianiRate()
+    {
+        // Usa il path corretto del tuo modello PianoRate
+        return $this->hasMany(PianoRate::class, 'gestione_id');
     }
 }

@@ -16,6 +16,12 @@ import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { Gestione } from '@/types/gestionale/gestioni'
 
+interface Capitolo {
+  id: number;
+  nome: string;
+  disabled: boolean;
+}
+
 const props = defineProps<{
   condominio: Building
   esercizio: Esercizio
@@ -32,7 +38,7 @@ const props = defineProps<{
 const { generateRoute, generatePath } = usePermission()
 
 const showRecurrence = ref(false)
-const capitoliDisponibili = ref([]);
+const capitoliDisponibili = ref<Capitolo[]>([]);
 const isLoadingCapitoli = ref(false);
 
 const frequencies = [
@@ -220,19 +226,38 @@ const submit = () => {
             
             <div class="relative mt-2">
               <v-select
-                multiple
-                v-model="form.capitoli_ids"
-                :options="capitoliDisponibili"
-                label="nome"
-                :reduce="c => c.id"
-                :disabled="!form.gestione_id || isLoadingCapitoli"
-                :placeholder="!form.gestione_id ? 'Seleziona prima una gestione...' : 'Includi tutto il bilancio'"
-                class="w-full v-select-custom"
+                  multiple
+                  v-model="form.capitoli_ids"
+                  :options="capitoliDisponibili"
+                  label="nome"
+                  :reduce="c => c.id"
+                  :disabled="!form.gestione_id || isLoadingCapitoli"
+                  :selectable="(option: Capitolo) => !option.disabled"
+                  :placeholder="!form.gestione_id ? 'Seleziona prima una gestione...' : 'Includi tutto il bilancio'"
+                  class="w-full v-select-custom"
               >
-                <template #spinner>
-                  <LoaderCircle v-if="isLoadingCapitoli" class="w-4 h-4 animate-spin mr-2" />
+                  <template #spinner>
+                      <LoaderCircle v-if="isLoadingCapitoli" class="w-4 h-4 animate-spin mr-2" />
+                  </template>
+                  <template #option="option: Capitolo">
+                      <div :class="{ 'opacity-40 italic': option.disabled }" class="flex justify-between w-full items-center py-1">
+                          <span :class="{ 'font-bold text-primary': option.nome.startsWith('[') }">
+                              {{ option.nome }}
+                          </span>
+                          <span v-if="option.disabled" class="text-[9px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2">
+                              In uso
+                          </span>
+                      </div>
+                  </template>
+                  <template #selected-option="option: Capitolo">
+                    <div class="flex items-center">
+                        <span :class="{ 'font-bold': option.nome.startsWith('[') }">
+                            {{ option.nome }}
+                        </span>
+                    </div>
                 </template>
               </v-select>
+
             </div>
             <p class="text-[11px] text-gray-500 mt-2 italic">Seleziona voci specifiche se vuoi un piano rate parziale.</p>
           </div>
