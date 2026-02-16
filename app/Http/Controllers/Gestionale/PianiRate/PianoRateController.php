@@ -200,9 +200,9 @@ class PianoRateController extends Controller
                 ->get();
 
             $orfani = $orfaniRaw->map(fn($c) => [
-                'id' => $c->id,
-                'nome' => $c->nome,
-                'importo' => MoneyHelper::fromCents($c->importo)
+                'id'      => $c->id,
+                'nome'    => $c->nome,
+                'importo' => $c->importo
             ])->values()->toArray();
         }
 

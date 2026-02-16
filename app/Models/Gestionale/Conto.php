@@ -3,6 +3,7 @@
 namespace App\Models\Gestionale;
 
 use App\Models\Tabella;
+use Database\Factories\Gestionale\ContoFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -106,5 +107,10 @@ class Conto extends Model
             $parent = $parent->parent;
         }
         return $ids;
+    }
+
+    protected static function newFactory()
+    {
+        return ContoFactory::new();
     }
 }

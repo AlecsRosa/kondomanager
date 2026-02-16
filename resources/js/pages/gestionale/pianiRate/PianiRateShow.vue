@@ -34,7 +34,7 @@ const props = defineProps<{
   needsMigration: boolean;
   copertura: {
       scoperto_count: number;
-      orfani: Array<{ id: number; nome: string; importo: string }>;
+      orfani: Array<{ id: number; nome: string; importo: number }>;
   } | null; 
 }>()
 
@@ -57,6 +57,14 @@ const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean } | null
 const isDeleteItemModalOpen = ref(false);
 // Stato per l'accordion (default false = chiuso per risparmiare spazio)
 const isCapitoliExpanded = ref(false);
+const isReloadingCapitoli = ref(false);
+
+// La logica diventa semplicissima: Intero vs Intero
+const isDisallineato = computed(() => {
+    // Tolleranza zero (o minima di 1 centesimo se proprio vogliamo essere permissivi)
+    // Ma matematicamente dovrebbero essere identici.
+    return Math.abs(props.pianoRate.totale_capitoli - aggregates.value.totaleTeorico) > 1; 
+});
 
 const confirmDetachItem = (capitolo: any) => {
     // Blocco visivo immediato se ci sono incassi
@@ -66,6 +74,25 @@ const confirmDetachItem = (capitolo: any) => {
     }
     itemToDelete.value = capitolo;
     isDeleteItemModalOpen.value = true;
+};
+
+// Aggiungi questa funzione negli script
+const toggleCapitoli = () => {
+    if (!isCapitoliExpanded.value) {
+        isReloadingCapitoli.value = true;
+        router.reload({ 
+            only: ['pianoRate'], 
+            onFinish: () => {
+                isReloadingCapitoli.value = true; 
+                setTimeout(() => {
+                    isCapitoliExpanded.value = true;
+                    isReloadingCapitoli.value = false;
+                }, 100);
+            }
+        });
+    } else {
+        isCapitoliExpanded.value = false;
+    }
 };
 
 const executeDetachItem = () => {
@@ -142,7 +169,6 @@ const executeMigration = () => {
 
 const isAlertOpen = ref(false);
 const rataToAnnullareId = ref<number | null>(null);
-
 const isRecalculateAlertOpen = ref(false);
 
 // --- LOGICA CAMBIO STATO ---
@@ -173,8 +199,6 @@ const toggleStatoPiano = (newValue: boolean) => {
         }
     );
 };
-
-
 
 const tab = ref<"anagrafica" | "immobile">("anagrafica");
 const showOnlyCredits = ref(false);
@@ -600,9 +624,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             </div>
 
             <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200">
-    
+
                 <button 
-                    @click="isCapitoliExpanded = !isCapitoliExpanded"
+                    @click="toggleCapitoli" 
                     class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg"
                     :class="{'rounded-b-lg': !isCapitoliExpanded}"
                 >
@@ -610,16 +634,32 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <div class="bg-white p-1.5 rounded-md border shadow-sm">
                             <Wallet class="w-4 h-4 text-emerald-600" />
                         </div>
-                        <div class="text-left">
-                            <h3 class="text-sm font-bold text-gray-700">Copertura spese</h3>
+                    <div class="text-left">
+                            <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                Copertura spese
+                                
+                                <Badge 
+                                    v-if="isDisallineato" 
+                                    variant="destructive" 
+                                    class="text-[10px] py-0 px-1.5 animate-pulse"
+                                >
+                                    <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
+                                </Badge>
+                            </h3>
+                            
                             <p class="text-[10px] text-gray-500">
-                                {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • totale {{ euro(aggregates.totaleTeorico) }}
+                                {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
+                                <span :class="{'text-red-600 font-bold': isDisallineato}">
+                                    totale preventivo: {{ euro(props.pianoRate.totale_capitoli) }}
+                                </span>
                             </p>
                         </div>
                     </div>
                     
                     <div class="flex items-center gap-2">
-                        <span class="text-xs text-primary font-medium" v-if="!isCapitoliExpanded">Mostra dettagli</span>
+                        <span class="text-xs text-primary font-medium" v-if="!isCapitoliExpanded">
+                            {{ isProcessingStatus ? 'Aggiornamento...' : 'Mostra dettagli' }}
+                        </span>
                         <component :is="isCapitoliExpanded ? ChevronUp : ChevronDown" class="w-4 h-4 text-gray-400" />
                     </div>
                 </button>
@@ -642,12 +682,12 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                             </div>
 
                             <div class="flex items-center gap-4">
-                                <span class="text-sm font-mono font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
+                                <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
                                 
                                 <button 
                                     @click="confirmDetachItem(capitolo)"
                                     :disabled="!switchState || aggregates.totaleVersato > 0"
-                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:hidden"
+                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 hover:bg-red-50 "
                                     title="Rimuovi voce e ricalcola"
                                 >
                                     <Trash2 class="w-4 h-4" />
@@ -978,7 +1018,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                             v-model="orphanCheckboxes[o.id]"
                         />
                         <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
-                            {{ o.nome }} <span class="font-mono text-amber-700">({{ o.importo }})</span>
+                            {{ o.nome }} <span class="font-mono text-amber-700">({{ euro(o.importo) }})</span>
                         </label>
                     </div>
                 </div>

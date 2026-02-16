@@ -131,8 +131,8 @@ Route::prefix('/gestionale/{condominio}')
     Route::delete('/piani-rate/{pianoRate}/rate/{rata}/annulla-emissione', [EmissioneRateController::class, 'destroy'])
         ->name('piani-rate.annulla-emissione');
     
-    Route::delete('/piani-rate/{pianoRate}/capitoli/{capitolo}', [PianoRateController::class, 'detachCapitolo'])
-        ->name('admin.gestionale.piani-rate.capitoli.detach');
+    Route::delete('esercizi/{esercizio}/piani-rate/{pianoRate}/capitoli/{capitolo}', [PianoRateController::class, 'detachCapitolo'])
+        ->name('piani-rate.capitoli.detach');
     
     // Rotta per vedere l'estratto conto (accessibile dal piano rate)
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])

@@ -22,7 +22,7 @@ interface Emits {
 
 interface Props {
   show: boolean
-  condominioId: string
+  condominioId: number
   esercizioId: number
   pianoContoId: number
 }

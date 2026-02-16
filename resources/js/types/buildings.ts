@@ -2,7 +2,7 @@ import { Palazzina } from './gestionale/palazzine';
 import { Scala } from './gestionale/scale';
 
 export interface Building {
-    id: string
+    id: number
     nome: string
     indirizzo: string
     email: string
