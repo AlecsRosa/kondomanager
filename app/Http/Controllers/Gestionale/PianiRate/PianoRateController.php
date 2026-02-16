@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Helpers\MoneyHelper;
+use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Support\Facades\Auth; 
 
@@ -41,26 +42,16 @@ class PianoRateController extends Controller
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
-
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
-
         $esercizi = $condominio->esercizi()->orderBy('data_inizio', 'desc')->get(['id', 'nome', 'stato']);
-
         return Inertia::render('gestionale/pianiRate/PianiRateList', [
-            'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'esercizi'   => $esercizi,
-            'condomini'  => CondominioResource::collection($this->getCondomini()),
-            'pianiRate'  => PianoRateResource::collection($pianiRate)->resolve(),
-            'meta' => [
-                'current_page' => $pianiRate->currentPage(),
-                'last_page'    => $pianiRate->lastPage(),
-                'per_page'     => $pianiRate->perPage(),
-                'total'        => $pianiRate->total(),
-            ],
+            'condominio' => $condominio, 'esercizio' => $esercizio, 'esercizi' => $esercizi,
+            'condomini' => CondominioResource::collection($this->getCondomini()),
+            'pianiRate' => PianoRateResource::collection($pianiRate)->resolve(),
+            'meta' => ['current_page' => $pianiRate->currentPage(), 'last_page' => $pianiRate->lastPage(), 'per_page' => $pianiRate->perPage(), 'total' => $pianiRate->total()],
             'filters' => $request->only(['nome']),
         ]);
     }
@@ -68,25 +59,13 @@ class PianoRateController extends Controller
     public function create(Condominio $condominio, Esercizio $esercizio): Response
     {
         $condomini = $this->getCondomini();
-
         $esercizi = $condominio->esercizi()->orderBy('data_inizio', 'desc')->get(['id', 'nome', 'stato']);
-
         $gestioni = Gestione::whereHas('esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
-            ->with(['esercizi' => fn($q) => $q->where('esercizio_id', $esercizio->id)])
-            ->get();
-
-        // --- [MODIFICA] Calcolo Info Saldo per Alert ---
-        // Passiamo null per ottenere il saldo GLOBALE del condominio
+            ->with(['esercizi' => fn($q) => $q->where('esercizio_id', $esercizio->id)])->get();
         $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
-        // ----------------------------------------------
-
         return Inertia::render('gestionale/pianiRate/PianiRateNew', [
-            'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'esercizi'   => $esercizi,
-            'condomini'  => $condomini,
-            'gestioni'   => $gestioni,
-            'saldoInfo'  => $saldoInfo, 
+            'condominio' => $condominio, 'esercizio' => $esercizio, 'esercizi' => $esercizi,
+            'condomini' => $condomini, 'gestioni' => $gestioni, 'saldoInfo' => $saldoInfo, 
         ]);
     }
 
@@ -95,186 +74,128 @@ class PianoRateController extends Controller
         $validated = $request->validated();
 
         try {
-
             DB::beginTransaction();
 
-            // Recuperiamo la gestione per i controlli successivi e per il lock
+            // 1. Recupero Gestione
             $gestione = Gestione::findOrFail($validated['gestione_id']);
-
             $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
 
-            // --- [NUOVA MODIFICA V1.9] PROTEZIONE OVERLAP CAPITOLI ---
-            if (!empty($validated['capitoli_ids'])) {
-                $this->pianoRateCreatorService->convalidaCapitoliUnici(
-                    (int) $validated['gestione_id'], 
-                    $validated['capitoli_ids']
-                );
-            }
+            // 2. Protezione Overlap (Disabilitata per V1.9)
+            // if (!empty($validated['capitoli_ids'])) { ... }
 
-            // --- [MODIFICA] INIZIO PROTEZIONE SALDO ---
-            // Calcoliamo se il saldo è applicabile a livello globale
+            // 3. RECUPERO E DIAGNOSTICA SALDI
             $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
-
-            // BLOCCO PREVENTIVO: Se il saldo NON è applicabile (già usato) MA esiste un importo da spalmare (!= 0),
-            // impediamo la creazione per evitare che il service lo applichi di nuovo erroneamente.
-            if (!$saldoInfo['applicabile'] && $saldoInfo['saldo'] != 0) {
-                DB::rollBack();
-                return back()
-                    ->withInput()
-                    ->with($this->flashError('ATTENZIONE: ' . $saldoInfo['motivo'] . ' Impossibile applicare nuovamente i saldi.'));
+            
+            $haMovimenti = $saldoInfo['has_movimenti'] ?? false;
+            if (!$haMovimenti && $saldoInfo['saldo'] == 0) {
+                // Fallback: se il service non ha rilevato movimenti ma saldo è 0, controlliamo manualmente
+                $esisteManuale = DB::table('saldi')
+                    ->where('condominio_id', $condominio->id)
+                    ->where('esercizio_id', $esercizio->id)
+                    ->where('saldo_iniziale', '!=', 0)
+                    ->exists();
+                if ($esisteManuale) $haMovimenti = true;
             }
-            // --- FINE PROTEZIONE SALDO ---
 
+            Log::info("PianoRate Store Debug:", [
+                'gestione_id' => $gestione->id,
+                'applicabile' => $saldoInfo['applicabile'],
+                'has_movimenti' => $haMovimenti
+            ]);
+
+            // VARIABILE DECISIONALE
+            $applicareSaldi = ($saldoInfo['applicabile'] && $haMovimenti);
+
+            // 4. Creazione Piano
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
 
-            // 3. INTELLIGENZA V1.9: Gestione Capitoli
-            $capitoliIds = $validated['capitoli_ids'] ?? [];
+            // 5. Gestione Capitoli
+            $capitoliConfig = $validated['capitoli_config'] ?? [];
+            $syncData = [];
 
-            if (empty($capitoliIds)) {
-                // Cerchiamo tutti i capitoli RADICE che non sono ancora assegnati a nessun piano attivo
+            if (!empty($capitoliConfig)) {
+                foreach ($capitoliConfig as $conf) {
+                    $importoCents = (isset($conf['importo']) && $conf['importo'] !== '') ? MoneyHelper::toCents($conf['importo']) : null;
+                    $syncData[$conf['id']] = ['importo' => $importoCents, 'note' => $conf['note'] ?? null];
+                }
+            } elseif (!empty($validated['capitoli_ids'])) {
+                $conti = Conto::findMany($validated['capitoli_ids']);
+                foreach ($conti as $c) {
+                    $syncData[$c->id] = ['importo' => $c->importo, 'note' => 'Selezione rapida (Intero)'];
+                }
+            } else {
                 $capitoliIds = $gestione->pianoConto->conti()
                     ->whereNull('parent_id')
-                    ->whereDoesntHave('pianiRate', function($q) {
-                        $q->where('attivo', true);
-                    })
-                    ->pluck('id')
-                    ->toArray();
+                    ->whereDoesntHave('pianiRate', function($q) { $q->where('attivo', true); })->get();
+                foreach ($capitoliIds as $c) {
+                    $syncData[$c->id] = ['importo' => $c->importo, 'note' => 'Inclusione automatica'];
+                }
             }
+            $pianoRate->capitoli()->sync($syncData);
 
-            $pianoRate->capitoli()->sync($capitoliIds);
-
+            // 6. Ricorrenza
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
             }
 
-            // --- [MODIFICA] MARCATURA GESTIONE (LOCK) ---
-            // Se abbiamo applicato un saldo diverso da zero, marchiamo questa gestione come "proprietaria" dei saldi
-            if ($saldoInfo['applicabile'] && $saldoInfo['saldo'] != 0) {
+            // 7. APPLICAZIONE SALDI (Aggiornamento DB)
+            if ($applicareSaldi) {
+                Log::info("PianoRateController: Applicazione saldi in corso per gestione {$gestione->id}");
                 $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
+                $gestione->refresh();
+                $pianoRate->setRelation('gestione', $gestione);
             }
-            // -------------------------------------
 
+            // 8. GENERAZIONE RATE (IL FIX FINALE)
             $statistiche = [];
-
             if (!empty($validated['genera_subito'])) {
-                $statistiche = app(GeneratePianoRateAction::class)->execute($pianoRate);
+                // PASSAGGIO ESPLICITO DEL BOOLEANO: TRUE o FALSE.
+                // Se $applicareSaldi è false, l'Action ignorerà i saldi anche se il DB dice "True".
+                $statistiche = app(GeneratePianoRateAction::class)->execute($pianoRate, $applicareSaldi);
             }
 
             DB::commit();
-
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
 
         } catch (\Throwable $e) {
-
             DB::rollBack();
-
-            Log::error("Errore creazione piano rate", ['errore' => $e->getMessage()]);
-
-            // [MODIFICA] Uso del trait flashError per consistenza
+            Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return back()->withInput()->with($this->flashError($e->getMessage()));
         }
     }
 
-    /**
-     * MODIFICATO SOLO PER AGGIUNGERE $ratePure
-     */
+    // ... (metodi successivi show, updateStato, destroy, etc. uguali) ...
     public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
     {
-        $pianoRate->load([
-            'rate.rateQuote.anagrafica',
-            'rate.rateQuote.immobile',
-            'gestione.pianoConto',
-            'capitoli.sottoconti'
-        ]);
-
-        // --- CALCOLO VOCI ORFANE ---
+        $pianoRate->load(['rate.rateQuote.anagrafica', 'rate.rateQuote.immobile', 'gestione.pianoConto', 'capitoli.sottoconti']);
         $orfani = [];
         if ($pianoRate->gestione && $pianoRate->gestione->pianoConto) {
-            
-            // Usiamo Eloquent per coerenza
             $orfaniRaw = $pianoRate->gestione->pianoConto->conti()
-                ->whereNull('parent_id') // Solo capitoli radice
-                // Escludiamo quelli in QUESTO piano O in ALTRI piani attivi
-                // whereDoesntHave('pianiRate') esclude QUALSIASI piano attivo collegato, incluso questo.
+                ->whereNull('parent_id')
                 ->whereDoesntHave('pianiRate', fn($q) => $q->where('piani_rate.attivo', true))
+                ->where('id', '!=', $pianoRate->capitoli->pluck('id')->toArray()) // Fix V1.9
                 ->get();
-
-            $orfani = $orfaniRaw->map(fn($c) => [
-                'id'      => $c->id,
-                'nome'    => $c->nome,
-                'importo' => $c->importo
-            ])->values()->toArray();
+            $orfani = $orfaniRaw->map(fn($c) => ['id' => $c->id, 'nome' => $c->nome, 'importo' => $c->importo])->values()->toArray();
         }
-
-        $coperturaData = [
-            'scoperto_count' => count($orfani),
-            'orfani' => $orfani
-        ];
-
-        // --- INIZIO LOGICA MIGRAZIONE V1.8 verrà rimosso nella versione 1.9 ---
-        $hasLegacyRates = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->whereNull('regole_calcolo'))
-            ->exists();
-
-        $hasEmittedRates = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))
-            ->exists();
-
-        $needsMigration = $hasLegacyRates && !$hasEmittedRates;
-        // --- FINE LOGICA MIGRAZIONE ---
-
-        $ratePure = $pianoRate->rate()
-            ->orderBy('numero_rata')
-            ->get()
-            ->map(function($rata) {
-                return [
-                    'id'            => $rata->id,
-                    'numero_rata'   => $rata->numero_rata,
-                    'is_emessa'     => $rata->rateQuote()->whereNotNull('scrittura_contabile_id')->exists(),
-                    'totale_rata'   => MoneyHelper::fromCents($rata->importo_totale), 
-                ];
-            });
-
+        $coperturaData = ['scoperto_count' => count($orfani), 'orfani' => $orfani];
+        $ratePure = $pianoRate->rate()->orderBy('numero_rata')->get()->map(function($rata) {
+            return ['id' => $rata->id, 'numero_rata' => $rata->numero_rata, 'is_emessa' => $rata->rateQuote()->whereNotNull('scrittura_contabile_id')->exists(), 'totale_rata' => MoneyHelper::fromCents($rata->importo_totale)];
+        });
         return Inertia::render('gestionale/pianiRate/PianiRateShow', [
-            'condominio'         => $condominio,
-            'esercizio'          => $esercizio,
-            'pianoRate'          => new PianoRateResource($pianoRate),
-            'ratePure'           => $ratePure, 
-            'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
-            'quotePerImmobile'   => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
-            'needsMigration'     => $needsMigration,
-            'copertura'          => $coperturaData, 
+            'condominio' => $condominio, 'esercizio' => $esercizio, 'pianoRate' => new PianoRateResource($pianoRate),
+            'ratePure' => $ratePure, 'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
+            'quotePerImmobile' => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
+            'needsMigration' => false, 'copertura' => $coperturaData,
         ]);
     }
 
-    /**
-     * [NUOVO METODO]
-     */
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
         $validated = $request->validate([ 'approvato' => 'required|boolean' ]);
-        
         $vecchioStato = $pianoRate->stato;
         $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
-
-        // ... controlli di sicurezza (bozza/rate emesse) ...
-
         $pianoRate->update(['stato' => $nuovoStato]);
-
-        // Ottieni l'utente autenticato con controllo di sicurezza
-        $user = Auth::user() ?? throw new \LogicException('User must be authenticated here');
-
-        // LANCIA L'EVENTO
-        // Laravel gestirà i Listener (e quindi i Job in coda) automaticamente
-        PianoRateStatusUpdated::dispatch(
-            $condominio, 
-            $esercizio,
-            $pianoRate, 
-            $user,
-            $vecchioStato, 
-            $nuovoStato
-        );
-
+        PianoRateStatusUpdated::dispatch($condominio, $esercizio, $pianoRate, Auth::user(), $vecchioStato, $nuovoStato);
         return back()->with($this->flashSuccess('Stato aggiornato con successo.'));
     }
 
@@ -282,78 +203,32 @@ class PianoRateController extends Controller
     {
         try {
             $pianoRate->delete();
-            return to_route('admin.gestionale.esercizi.piani-rate.index', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoRate' => $pianoRate->id
-                ])->with($this->flashSuccess(__('gestionale.success_delete_piano_rate')));
+            return to_route('admin.gestionale.esercizi.piani-rate.index', ['condominio' => $condominio->id, 'esercizio' => $esercizio->id, 'pianoRate' => $pianoRate->id])->with($this->flashSuccess(__('gestionale.success_delete_piano_rate')));
         } catch (\Throwable $e) {
-            Log::error('Error deleting piano rate', ['message' => $e->getMessage()]);
-            return to_route('admin.gestionale.esercizi.piani-rate.index', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoRate' => $pianoRate->id
-                ])->with($this->flashError(__('gestionale.error_delete_piano_rate')));
+            return to_route('admin.gestionale.esercizi.piani-rate.index', ['condominio' => $condominio->id, 'esercizio' => $esercizio->id, 'pianoRate' => $pianoRate->id])->with($this->flashError(__('gestionale.error_delete_piano_rate')));
         }
     }
 
     protected function redirectSuccess(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, array $validated, array $statistiche = []) {
         $message = $validated['genera_subito'] ? "Piano rate creato e generato!" : "Piano rate creato!";
-        return redirect()->route('admin.gestionale.esercizi.piani-rate.show', [
-            'condominio' => $condominio->id,
-            'esercizio'  => $esercizio->id,
-            'pianoRate'  => $pianoRate->id
-        ])->with('success', $message);
+        return redirect()->route('admin.gestionale.esercizi.piani-rate.show', ['condominio' => $condominio->id, 'esercizio' => $esercizio->id, 'pianoRate' => $pianoRate->id])->with('success', $message);
     }
 
-    /**
-     * Rimuove un capitolo di spesa dal piano rate e ricalcola.
-     */
     public function detachCapitolo(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, $capitoloId)
     {
-        // 1. BLOCCO TOTALE: Pagamenti
-        $haPagamenti = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))
-            ->exists();
-
-        if ($haPagamenti) {
-            return back()->with($this->flashError(
-                "Impossibile modificare le voci di spesa: ci sono rate con incassi registrati."
-            ));
-        }
-
-        // 2. BLOCCO SOFT: Emissioni
-        $haEmissioni = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))
-            ->exists();
-
-        if ($haEmissioni) {
-            return back()->with($this->flashError(
-                "Annulla le emissioni contabili delle rate prima di rimuovere voci di spesa."
-            ));
-        }
-
+        if ($pianoRate->rate()->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))->exists()) return back()->with($this->flashError("Impossibile modificare: ci sono incassi."));
+        if ($pianoRate->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists()) return back()->with($this->flashError("Annulla le emissioni prima."));
         try {
             DB::beginTransaction();
-
-            // Scolleghiamo la voce (detach rimuove la riga dalla pivot)
             $pianoRate->capitoli()->detach($capitoloId);
-
-            // RIGENERAZIONE OBBLIGATORIA
-            // Cancelliamo le rate vecchie (sicuro perché siamo in bozza)
             $pianoRate->rate()->delete();
-            
-            // Rigeneriamo il piano con le voci rimanenti
-            app(GeneratePianoRateAction::class)->execute($pianoRate);
-
+            // Passiamo NULL per default (l'Action userà il flag DB, che è corretto per update)
+            app(GeneratePianoRateAction::class)->execute($pianoRate, null); 
             DB::commit();
-
-            return back()->with($this->flashSuccess("Voce di spesa rimossa e piano ricalcolato correttamente."));
-
+            return back()->with($this->flashSuccess("Voce rimossa e ricalcolata."));
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error("Errore detach capitolo", ['msg' => $e->getMessage()]);
-            return back()->with($this->flashError("Errore durante l'operazione: " . $e->getMessage()));
+            return back()->with($this->flashError("Errore: " . $e->getMessage()));
         }
     }
 }

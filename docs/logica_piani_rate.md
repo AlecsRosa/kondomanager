@@ -1,40 +1,45 @@
-# Logica di Validazione e Copertura Piani Rate (V1.9)
+# Logica di Validazione e Copertura Piani Rate (V1.9.3)
 
-### 1. Il Principio di Integrità
-Ogni voce di spesa (**Conto**) del preventivo deve essere associata a un solo piano rate attivo. Questo garantisce l'assenza di raddoppi di incasso (*Double Billing*) o ammanchi nel bilancio consuntivo.
+### 1. Il Principio di Saturazione del Budget
+Nella V1.9.3 superiamo il concetto rigido di "Una voce = Un piano".
+La nuova regola aurea è la **Saturazione**: una singola voce di spesa del preventivo può essere distribuita su più piani rate (es. Acconto e Saldo), purché la somma degli importi parziali non superi il totale preventivato.
 
-### 2. L'Ancoraggio Atomico e Gerarchico
-Il piano rate non è più un'entità astratta. Ogni piano si "ancora" a specifici ID della tabella conti tramite la tabella pivot `piano_rate_capitoli`.
+### 2. Ancoraggio Frazionato & Smart Overrides
+Il collegamento tra Piano Rate e Voci di Spesa (Pivot `piano_rate_capitoli`) ora trasporta un metadato fondamentale: l'**Importo Impegnato**.
 
-**Meccanismi di Controllo Avanzati:**
-* **Auto-Popolamento:** Se l'amministratore crea un piano senza selezionare voci (Piano Globale), il sistema ancora automaticamente tutti i Capitoli Radice orfani a quel piano.
-* **Collision Detection Gerarchica:** Il sistema non controlla solo il singolo ID, ma l'intero "ramo familiare" del conto.
-    * *Blocco Discendente:* Se selezioni un Padre, tutti i suoi Figli vengono marcati come "In Uso".
-    * *Blocco Ascendente:* Se selezioni un Figlio, il Padre viene marcato come "In Uso" (poiché il Padre non è più selezionabile "in blocco").
-* **Orphan Check:** Il sistema rileva voci di spesa "orfane" (aggiunte al preventivo dopo la creazione dei piani) e ne segnala l'assenza nella Dashboard.
+* **Partial Budgeting:** L'amministratore può decidere di includere solo una quota parte di una voce (es. 400€ su 1.000€). Il sistema traccia il "Residuo Disponibile" per i piani successivi.
+* **Smart Folder Push-Down:** Se viene selezionato un "Capitolo Padre" (Folder senza tabella millesimale) e gli viene assegnato un importo forzato (Override), il sistema applica una logica proporzionale inversa:
+    1. Calcola il rapporto tra l'Override e il totale originale dei figli.
+    2. "Spinge" (Push-Down) questo rapporto sui sottoconti figli.
+    3. Distribuisce l'importo ridotto usando le tabelle millesimali specifiche di ogni figlio.
 
-### 3. Dashboard Audit & Integrità
-La Dashboard funge da "Semaforo Contabile" confrontando i dati in tempo reale:
-* **Preventivo:** Somma dei conti `parent_id IS NULL` della gestione.
-* **Pianificato:** Somma degli importi dei conti ancorati nella pivot `piano_rate_capitoli`.
-* **Copertura:** Percentuale di bilancio coperta da piani rate attivi. Se < 100%, viene mostrato un avviso proattivo con l'elenco analitico delle voci scoperte.
+### 3. Motore di Calcolo "Penny Perfect"
+Per garantire la quadratura assoluta dei conti, il motore di calcolo (`CalcoloQuoteService`) abbandona gli arrotondamenti standard in favore dell'**Algoritmo di Quadratura**.
 
-### 4. Workflow di Manutenzione (Sincronizzazione)
-In presenza di voci "Orfane", l'amministratore dispone di due strade per l'inclusione (**Add Flow**):
-* **Piano Integrativo:** Creazione di un nuovo piano dedicato alle voci scoperte.
-* **Sincronizzazione Intelligente:** Tramite `SincronizzaCapitoliOrfaniAction`, è possibile integrare le voci orfane in un piano esistente selezionando granularmente (checkbox) quali voci includere.
+* **Logica:** Durante la distribuzione su N condomini, il sistema accumula gli importi assegnati. All'ultimo beneficiario viene assegnato esattamente il *residuo matematico* (Totale - Somma Assegnata).
+* **Risultato:** Errore di arrotondamento = **0.00€**. La somma delle rate generate corrisponde sempre al centesimo all'importo impegnato.
 
-### 5. Workflow di Correzione (Detach & Undo)
-Il sistema permette la rimozione puntuale di voci erroneamente associate (**Remove Flow**), mantenendo la coerenza gerarchica.
-* **Lista Voci Incluse:** Visualizzazione collassabile (Accordion) all'interno del dettaglio piano rate, con calcolo dinamico dei totali per i Capitoli Padre (somma dei figli).
-* **Smart Alert (Detach):**
-    * *Rimozione Figlio:* Dissociazione semplice della singola voce.
-    * *Rimozione Padre:* Warning specifico che informa l'utente che l'intera struttura gerarchica (Gruppo + Sottoconti) verrà dissociata.
-* **Ricalcolo Immediato:** Al termine del detach, le rate vengono rigenerate e gli importi aggiornati al ribasso.
+### 4. Logica Saldi & Piani Integrativi
+Il sistema adotta una **Strategia Decisionale Ibrida** per prevenire la duplicazione dei debiti pregressi:
 
-### 6. La "Fortezza": I 3 Livelli di Protezione
-Per garantire l'immutabilità dei dati contabili consolidati, il sistema applica tre livelli di blocco rigorosi su tutte le operazioni di modifica (Sincronizzazione, Detach, Cancellazione):
+* **Piano Principale (Master):** È il primo piano generato. Il Controller rileva che i saldi non sono ancora stati usati (`saldo_applicato = 0`), li include nel calcolo e marca il Flag DB a `1`.
+* **Piano Integrativo:** Qualsiasi piano creato successivamente trova il Flag DB a `1`. Il sistema riconosce che i debiti pregressi sono già stati "spesi" e forza l'esclusione dei saldi (`$saldi = []`), generando un piano contenente *solo* le nuove spese correnti.
+* **UX Contestuale:** I tooltip e gli indicatori visivi dei saldi (pallini Rossi/Blu) appaiono nell'interfaccia solo se lo snapshot delle regole di calcolo conferma l'effettivo utilizzo dei saldi in quel piano.
 
-* **Livello 1 (Blocco Incassi):** Se esistono pagamenti registrati (`importo_pagato > 0`) su qualsiasi rata del piano, **ogni modifica strutturale è inibita**. L'integrità di cassa è prioritaria.
-* **Livello 2 (Blocco Emissioni):** Se le rate sono state emesse in contabilità (`scrittura_contabile_id NOT NULL`), il sistema impedisce la modifica e richiede l'annullamento dell'emissione (ritorno in stato Bozza) prima di procedere.
-* **Livello 3 (Blocco Dipendenze Preventivo):** A livello di `ContoController`, è impedita la cancellazione fisica di una voce dal preventivo se questa risulta ancorata a un piano rate attivo. È necessario prima rimuoverla dal piano (Detach) per poterla eliminare dal database.
+### 5. Dashboard Audit & Integrità Reale
+Il "Semaforo Contabile" della Dashboard è stato aggiornato per leggere i dati reali:
+* **Preventivo:** Somma dei valori nominali dei conti nel database.
+* **Pianificato (Reale):** Somma degli importi *effettivi* (Override) definiti nella tabella pivot dei piani attivi.
+* **Anomaly Detection:** Il sistema confronta Preventivo vs Pianificato. Se `Pianificato < Preventivo`, segnala l'ammanco come "Residuo da Rateizzare".
+
+### 6. Workflow di Manutenzione (Sincronizzazione)
+In presenza di voci "Orfane" o parzialmente scoperte:
+* **Sincronizzazione Granulare:** È possibile aggiungere voci a un piano esistente.
+* **Gestione Conflitti:** Se si tenta di aggiungere una voce che ha residuo 0 (già saturata altrove), il sistema inibisce la selezione visualizzando un indicatore di "Budget Esaurito".
+
+### 7. La "Fortezza": I 3 Livelli di Protezione
+Per garantire l'immutabilità dei dati contabili consolidati, permangono i tre livelli di blocco rigorosi:
+
+* **Livello 1 (Blocco Incassi):** Se esistono pagamenti registrati (`importo_pagato > 0`) su qualsiasi rata del piano, **ogni modifica strutturale è inibita** (inclusa la modifica degli importi parziali).
+* **Livello 2 (Blocco Emissioni):** Se le rate sono state emesse in contabilità (`scrittura_contabile_id NOT NULL`), il sistema impedisce la modifica e richiede l'annullamento dell'emissione.
+* **Livello 3 (Blocco Dipendenze Preventivo):** A livello di `ContoController`, è impedita la modifica dell'importo base di una voce di spesa se questa è ancorata a un piano rate attivo, per evitare disallineamenti tra "Preventivato" e "Rateizzato".

@@ -8,32 +8,26 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class PianoRateResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
-        // 1. Calcolo Totale Piano (Somma delle rate collegate) in CENTESIMI
-        $totalePiano = 0;
-        if ($this->relationLoaded('rate')) {
-            // Restituiamo INT (Centesimi) per coerenza con il frontend
-            $totalePiano = (int) $this->rate->sum('importo_totale');
+        // Carichiamo la relazione se non presente
+        if (!$this->relationLoaded('capitoli')) {
+            $this->load(['capitoli' => function($q) {
+                // Fondamentale: carichiamo i dati extra della pivot
+                $q->withPivot(['importo', 'note']);
+            }]);
         }
 
-        // 2. Calcolo Totale Capitoli (Preventivo Reale) in CENTESIMI
-        $totaleCapitoli = 0;
-        if ($this->relationLoaded('capitoli')) {
-            $totaleCapitoli = (int) $this->capitoli->sum(function($c) {
-                // Se è un padre, sommiamo i figli, altrimenti prendiamo il suo importo
-                return $c->sottoconti->isNotEmpty() 
-                    ? $c->sottoconti->sum('importo') 
-                    : $c->importo;
-            });
-        }
+        // CALCOLO TOTALE REALE (FIX 200€ vs 823€)
+        // Se nella pivot c'è un importo (override), usiamo quello.
+        // Altrimenti usiamo l'importo standard del conto.
+        $totaleReale = $this->capitoli->sum(function ($capitolo) {
+            return !is_null($capitolo->pivot->importo) 
+                ? $capitolo->pivot->importo 
+                : $capitolo->importo;
+        });
 
-        // 3. Gestione Stato
+        // Gestione Stato
         $statoValue = $this->stato;
         if ($this->stato instanceof \UnitEnum) {
             $statoValue = $this->stato->value;
@@ -45,26 +39,36 @@ class PianoRateResource extends JsonResource
             'descrizione'     => $this->descrizione,
             'numero_rate'     => $this->numero_rate,
             'stato'           => $statoValue,
+            'giorno_scadenza' => $this->giorno_scadenza,
+            'metodo_distribuzione' => $this->metodo_distribuzione,
             'data_inizio'     => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
             
-            // DATI PURI IN CENTESIMI (Es. 120000 per 1.200,00 €)
-            // Questo risolve il conflitto con gli "aggregates" del frontend
-            'totale_piano'    => $totalePiano,
-            'totale_capitoli' => $totaleCapitoli,
+            // FIX: Usiamo il totale calcolato dalla pivot
+            'totale_capitoli' => (int) $totaleReale,
             
-            // Relazioni
+            // Totale rate generate (controllo incrociato)
+            'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
+            
             'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
+            
             'capitoli'        => $this->whenLoaded('capitoli', function() {
-                return $this->capitoli->map(fn($c) => [
-                    'id'          => $c->id,
-                    'nome'        => $c->nome,
-                    // Anche qui manteniamo i centesimi
-                    'importo'     => $c->sottoconti->isNotEmpty() 
-                                        ? (int) $c->sottoconti->sum('importo') 
-                                        : (int) $c->importo,
-                    'is_parent'   => $c->sottoconti->isNotEmpty(),
-                    'figli_names' => $c->sottoconti->pluck('nome')->join(', '),
-                ]);
+                return $this->capitoli->map(function ($c) {
+                    $isParent = $c->sottoconti()->exists();
+                    
+                    // Qui decidiamo quale importo mostrare nel dettaglio
+                    $importoEffettivo = !is_null($c->pivot->importo) 
+                        ? $c->pivot->importo 
+                        : $c->importo;
+
+                    return [
+                        'id'          => $c->id,
+                        'nome'        => $c->nome,
+                        'importo'     => (int) $importoEffettivo, // Importo reale (Override o Standard)
+                        'note'        => $c->pivot->note,
+                        'is_parent'   => $isParent,
+                        'figli_names' => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                    ];
+                });
             }),
         ];
     }

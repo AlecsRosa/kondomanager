@@ -64,11 +64,13 @@ class PianoRate extends Model
 
     /**
      * I capitoli di spesa inclusi in questo piano rate.
-     * Se la collezione è vuota, si intende che include TUTTI i capitoli della gestione.
+     * CRUCIALE: withPivot carica i campi 'importo' e 'note' dalla tabella di collegamento.
+     * Senza questo, il sistema ignora gli importi parziali e usa il totale del conto.
      */
     public function capitoli(): BelongsToMany
     {
         return $this->belongsToMany(Conto::class, 'piano_rate_capitoli', 'piano_rate_id', 'conto_id')
+                    ->withPivot(['importo', 'note']) // <--- IL FIX FONDAMENTALE
                     ->withTimestamps();
     }
 
@@ -79,7 +81,4 @@ class PianoRate extends Model
     {
         return PianoRateFactory::new();
     }
-
-    
 }
-

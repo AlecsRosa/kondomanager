@@ -25,6 +25,9 @@ class ContoResource extends JsonResource
             'descrizione'    => $this->descrizione,
             'tipo'           => $this->tipo,
             'note'           => $this->note,
+            // *** LA RIGA MANCANTE ***
+            // Questo permette al frontend di leggere il "Lucchetto" dal Modello
+            'has_rate_emesse' => $this->has_rate_emesse,
             'sottoconti' => $this->whenLoaded('sottoconti', function () {
                 return ContoResource::collection($this->sottoconti);
             }),

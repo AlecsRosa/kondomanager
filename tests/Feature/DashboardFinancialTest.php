@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\StatoPianoRate;
 use App\Models\User;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -83,4 +84,100 @@ test('dashboard risulta allineata', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('copertura.is_completo', true)
         );
+});
+
+test('dashboard somma correttamente rate da più piani per la stessa voce (Scenario Multi-Piano)', function () {
+    Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $user = User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $condominio = Condominio::factory()->create();
+    
+    $esercizio = Esercizio::factory()->create([
+        'condominio_id' => $condominio->id,
+        'stato' => 'aperto', 
+        'data_inizio' => '2026-01-01', 
+        'data_fine' => '2026-12-31',
+    ]);
+
+    $gestione = Gestione::factory()->create(['condominio_id' => $condominio->id]);
+    
+    // *** CORREZIONE: Colleghiamo la gestione all'esercizio ***
+    $esercizio->gestioni()->attach($gestione->id, ['attiva' => true]);
+
+    $pianoConti = PianoConto::factory()->create(['gestione_id' => $gestione->id, 'condominio_id' => $condominio->id]);
+    $padre = Conto::factory()->create(['piano_conto_id' => $pianoConti->id, 'importo' => 0]); 
+    $contoSpesa = Conto::factory()->create([
+        'piano_conto_id' => $pianoConti->id, 
+        'parent_id' => $padre->id, 
+        'importo' => 100000 
+    ]);
+
+    $pianoA = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'descrizione' => 'Rate Ordinarie']);
+    $pianoA->capitoli()->attach($padre->id); 
+    Rata::factory()->create(['piano_rate_id' => $pianoA->id, 'importo_totale' => 60000]);
+
+    $pianoB = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'descrizione' => 'Conguaglio']);
+    $pianoB->capitoli()->attach($padre->id);
+    Rata::factory()->create(['piano_rate_id' => $pianoB->id, 'importo_totale' => 40000]);
+
+    $this->actingAs($user)
+        ->get("/admin/gestionale/{$condominio->id}")
+        ->assertStatus(200)
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('gestionale/dashboard/Dashboard')
+            ->has('copertura', fn ($json) => $json
+                ->where('preventivo', 100000)   
+                ->where('pianificato', 100000) 
+                ->where('delta', 0)
+                ->where('is_completo', true)
+                ->etc()
+            )
+        );
+});
+
+test('dashboard identifica la singola voce responsabile del deficit', function () {
+    // Setup: Spesa 1.000€, Rata 900€ -> Buco 100€
+    $data = setupFinancialScenario(100000, 90000); 
+
+    $this->actingAs($data['user'])
+        ->get("/admin/gestionale/{$data['condominio']->id}")
+        ->assertStatus(200)
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('copertura.voci_critiche', 1) // Ci aspettiamo 1 voce nella lista dei problemi
+            ->has('copertura.voci_critiche.0', fn ($json) => $json
+                ->where('mancante', 10000) // 100,00€ di buco
+                // Qui verifichiamo che ci sia il suggerimento giusto
+                ->where('tipo_azione', 'integrazione') 
+                ->etc()
+            )
+        );
+});
+
+test('impedisce la modifica dell\'importo spesa se esistono rate emesse', function () {
+    Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $user = User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $condominio = Condominio::factory()->create();
+    
+    $gestione = Gestione::factory()->create(['condominio_id' => $condominio->id]);
+    $pianoConti = PianoConto::factory()->create(['gestione_id' => $gestione->id]);
+    $conto = Conto::factory()->create(['piano_conto_id' => $pianoConti->id, 'importo' => 50000]);
+    
+    // *** CORREZIONE: Usiamo l'Enum corretto (o 'approvato' se non hai l'enum sotto mano) ***
+    // Assumo che tu abbia StatoPianoRate::APPROVATO, se dà errore usa la stringa 'approvato'
+    $stato = enum_exists(StatoPianoRate::class) ? StatoPianoRate::APPROVATO : 'approvato';
+
+    $pianoRate = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'stato' => $stato]); 
+    $pianoRate->capitoli()->attach($conto->id); 
+
+    $response = $this->actingAs($user)
+        ->patchJson("/admin/gestionale/{$condominio->id}/conti/{$conto->id}", [
+            'importo' => 60000,
+            'nome' => 'Spesa Modificata'
+        ]);
+
+            dump($response->getContent());
+
+    // Verifichiamo che sia 422 (Unprocessable) o 403 (Forbidden)
+    $response->assertStatus(422); 
 });

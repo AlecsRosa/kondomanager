@@ -155,7 +155,98 @@ class ContoController extends Controller
      * @param PianoConto $pianoConto Context.
      * @param Conto $conto The item to update.
      */
+    /**
+     * Update an existing expense item.
+     * [V1.9 SECURITY UPDATE]
+     * Blocks amount modification if the item is already linked to active/issued payment plans.
+     */
     public function update(UpdateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
+    {
+        try {
+            DB::beginTransaction();
+
+            $data = $request->validated();
+            $isCapitolo = $data['isCapitolo'];
+            $isSottoConto = $data['isSottoConto'];
+            
+            // Convertiamo il nuovo importo per il confronto
+            $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']);
+
+            // --- [SECURITY CHECK V1.9] ---
+            // Se stiamo provando a modificare l'importo...
+            if (!$isCapitolo && $nuovoImporto != $conto->importo) {
+                
+                // A. Vincolo Diretto
+                $vincoloDiretto = $conto->pianiRate()
+                    ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
+                    ->exists();
+
+                // B. Vincolo Ereditato (Se ho un padre, controllo lui)
+                $vincoloEreditato = false;
+                if ($conto->parent_id) {
+                    // Carichiamo il padre se non è già caricato
+                    if (!$conto->relationLoaded('parent')) {
+                        $conto->load('parent');
+                    }
+                    
+                    if ($conto->parent) {
+                        $vincoloEreditato = $conto->parent->pianiRate()
+                            ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
+                            ->exists();
+                    }
+                }
+
+                // Se esiste anche solo un vincolo (Mio o di Papà), BLOCCA.
+                if ($vincoloDiretto || $vincoloEreditato) {
+                     return back()->with($this->flashError(
+                        __('Non puoi modificare l\'importo: questa voce (o il suo capitolo) è inclusa in rate già emesse.')
+                    ));
+                }
+            }
+            // -----------------------------
+
+            // Prepara i dati per l'aggiornamento
+            $contoData = [
+                'parent_id'      => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'nome'           => $data['nome'],
+                'descrizione'    => $data['descrizione'] ?? null,
+                'tipo'           => $data['tipo'],
+                'importo'        => $nuovoImporto, 
+                'note'           => $data['note'] ?? null,
+            ];
+
+            $conto->update($contoData);
+
+            DB::commit();
+
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [
+                    'condominio' => $condominio->id,
+                    'esercizio'  => $esercizio->id,
+                    'pianoConto' => $pianoConto->id
+                ])
+                ->with($this->flashSuccess(__('gestionale.success_update_conto')));
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Errore durante l\'aggiornamento della voce di spesa:', [
+                'condominio_id' => $condominio->id,
+                'esercizio_id'  => $esercizio->id,
+                'piano_conto_id' => $pianoConto->id,
+                'conto_id'      => $conto->id,
+                'error'         => $e->getMessage(),
+                'trace'         => $e->getTraceAsString()
+            ]);
+
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [
+                    'condominio' => $condominio->id,
+                    'esercizio'  => $esercizio->id,
+                    'pianoConto' => $pianoConto->id
+                ])
+                ->with($this->flashError(__('gestionale.error_update_conto')));
+        }
+    }
+    /* public function update(UpdateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
         try {
             DB::beginTransaction();
@@ -204,7 +295,7 @@ class ContoController extends Controller
                 ])
                 ->with($this->flashError(__('gestionale.error_update_conto')));
         }
-    }
+    } */
 
     /**
      * Delete an expense item (Conto).

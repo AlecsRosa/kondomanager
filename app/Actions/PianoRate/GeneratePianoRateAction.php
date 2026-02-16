@@ -16,38 +16,60 @@ class GeneratePianoRateAction
     ) {}
 
     /**
-     * Full pipeline to generate a PianoRate.
-     *
-     * @return array Statistics about generation
+     * @param PianoRate $pianoRate
+     * @param bool|null $forzaApplicazioneSaldi 
+     * - TRUE: Applica i saldi (es. Primo piano creato).
+     * - FALSE: Non applicare (es. Piano integrativo).
+     * - NULL: Auto-detect basato sul DB (es. Rigenerazione futura).
      */
-    public function execute(PianoRate $pianoRate): array
+    public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null): array
     {
-        Log::info("=== GENERAZIONE PIANO RATE INIZIATA ===");
+        Log::info("=== GENERAZIONE PIANO RATE ===");
 
-        // FIX: CARICA LA RICORRENZA E LA GESTIONE AGGIORNATA
-        $pianoRate->load(['ricorrenza', 'gestione']);
+        // 1. Caricamento Dati
+        $pianoRate->load(['ricorrenza']);
 
+        if (!$pianoRate->relationLoaded('gestione')) {
+            $pianoRate->load('gestione');
+        }
         $gestione = $pianoRate->gestione;
 
         $esercizio = $gestione->esercizi()->wherePivot('attiva', true)->first()
             ?? $gestione->esercizi()->first();
 
-        // ORA: Passiamo anche il piano rate per attivare il filtro
+        // 2. Calcolo Spese (Quote con Override V1.9.3)
         $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
 
-        // --- [MODIFICA] SICUREZZA SALDI ---
-        // Calcoliamo i saldi SOLO SE questa gestione è stata autorizzata (flag nel DB)
-        // Se stiamo rigenerando una straordinaria, questo impedirà il ricalcolo dei debiti pregressi.
-        if ($gestione->saldo_applicato) {
-            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
-        } else {
-            $saldi = []; // Nessun saldo da applicare
-            Log::info("Generazione: Saldi ignorati per gestione {$gestione->id} (saldo_applicato = false)");
-        }
-        // ----------------------------------
+        // 3. GESTIONE SALDI (Logica Ibrida: Controller + DB)
+        // Recuperiamo il flag reale dal DB per sicurezza
+        $flagDb = $gestione->fresh()->saldo_applicato; 
+        
+        $applicare = false;
 
+        if ($forzaApplicazioneSaldi !== null) {
+            // A. Il Controller comanda (Creazione Piano A o B)
+            $applicare = $forzaApplicazioneSaldi;
+            Log::info("Generazione: Logica Saldi forzata dal Controller -> " . ($applicare ? 'SI (Applica)' : 'NO (Ignora)'));
+        } else {
+            // B. Auto-Detect (Rigenerazione / Update)
+            // Se non specificato, ci fidiamo del flag DB.
+            // (Nota: in futuro qui servirebbe sapere se QUESTO piano specifico possiede i saldi)
+            $applicare = $flagDb;
+            Log::info("Generazione: Logica Saldi Auto-Detect (Flag DB: " . ($flagDb ? 'ON' : 'OFF') . ") -> " . ($applicare ? 'SI' : 'NO'));
+        }
+
+        if ($applicare) {
+            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
+            Log::info("Generazione: Saldi INCLUSI (" . count($saldi) . " anagrafiche)");
+        } else {
+            $saldi = [];
+            Log::info("Generazione: Saldi ESCLUSI (Array vuoto)");
+        }
+
+        // 4. Generazione Date
         $dateRate = $this->dateRateAction->execute($pianoRate, $gestione);
 
+        // 5. Creazione Rate Fisiche
         $stats = $this->rateQuotesAction->execute(
             $pianoRate,
             $totaliPerImmobile,

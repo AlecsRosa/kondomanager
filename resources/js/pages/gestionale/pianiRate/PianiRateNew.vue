@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import InputError from '@/components/InputError.vue'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle } from 'lucide-vue-next'
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban } from 'lucide-vue-next'
 import vSelect from 'vue-select'
 import axios from 'axios';
 import { usePermission } from '@/composables/permissions'
@@ -16,10 +16,23 @@ import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { Gestione } from '@/types/gestionale/gestioni'
 
+// Interfacce allineate al Backend
 interface Capitolo {
   id: number;
   nome: string;
   disabled: boolean;
+  importo_totale: number; 
+  residuo: number;        
+  note?: string;
+}
+
+interface CapitoloDettaglio {
+  id: number;
+  nome: string;
+  importo_totale: number;
+  residuo: number;
+  importo_da_usare: number | undefined; 
+  note: string;
 }
 
 const props = defineProps<{
@@ -32,6 +45,7 @@ const props = defineProps<{
     motivo: string
     gestione_utilizzatrice?: any
     is_primo_anno?: boolean
+    has_movimenti?: boolean 
   }
 }>()
 
@@ -40,6 +54,7 @@ const { generateRoute, generatePath } = usePermission()
 const showRecurrence = ref(false)
 const capitoliDisponibili = ref<Capitolo[]>([]);
 const isLoadingCapitoli = ref(false);
+const capitoliDettaglio = ref<CapitoloDettaglio[]>([]);
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -70,17 +85,41 @@ const form = useForm({
   recurrence_frequency: 'MONTHLY',
   recurrence_interval: 1,
   recurrence_by_day: [] as string[], 
-  capitoli_ids: [] as number[], 
+  capitoli_ids: [] as number[],
+  capitoli_config: [] as any[], 
 })
 
-// REATTIVITÀ SALDO
+// --- HELPER FUNCTIONS ---
+const formatMoney = (val: number) => {
+  return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+}
+
+const rimuoviCapitolo = (id: number) => {
+  form.capitoli_ids = form.capitoli_ids.filter(cid => cid !== id);
+}
+
+const totaleSelezionatoFormatted = computed(() => {
+  const tot = capitoliDettaglio.value.reduce((acc, curr) => {
+     const val = curr.importo_da_usare || 0;
+     return acc + Number(val);
+  }, 0);
+  return formatMoney(tot);
+});
+
+// [MODIFICA] Logica robusta per mostrare il dropdown anche se saldo è 0 ma ci sono movimenti
 const mostraDistribuzioneSaldo = computed(() => {
+  if (props.saldoInfo.has_movimenti !== undefined) {
+      return props.saldoInfo.applicabile && props.saldoInfo.has_movimenti;
+  }
   return props.saldoInfo.applicabile && props.saldoInfo.saldo !== 0;
 });
 
+// --- LOGICA DI CARICAMENTO ---
 watch(() => form.gestione_id, async (newGestioneId) => {
   form.capitoli_ids = [];
+  capitoliDettaglio.value = [];
   capitoliDisponibili.value = [];
+  
   if (!newGestioneId) return;
 
   isLoadingCapitoli.value = true;
@@ -88,6 +127,7 @@ watch(() => form.gestione_id, async (newGestioneId) => {
     const response = await axios.get(route('admin.gestionale.fetch-capitoli-gestione', {
       condominio: props.condominio.id
     }), { params: { gestione_id: newGestioneId } });
+    
     capitoliDisponibili.value = response.data;
   } catch (error) {
     console.error("Errore caricamento capitoli:", error);
@@ -110,13 +150,44 @@ const usingByDay = computed(() =>
 const toggleDay = (dayValue: string) => {
   const index = form.recurrence_by_day.indexOf(dayValue);
   if (index > -1) {
-    form.recurrence_by_day.splice(index, 1); // Rimuove se presente
+    form.recurrence_by_day.splice(index, 1);
   } else {
-    form.recurrence_by_day.push(dayValue); // Aggiunge se assente
+    form.recurrence_by_day.push(dayValue);
   }
 }
 
+// --- SINCRONIZZAZIONE SELECT -> DETTAGLIO ---
+watch(() => form.capitoli_ids, (newIds) => {
+  capitoliDettaglio.value = capitoliDettaglio.value.filter(c => newIds.includes(c.id));
+  
+  newIds.forEach(id => {
+    if (!capitoliDettaglio.value.find(c => c.id === id)) {
+      const capOriginale = capitoliDisponibili.value.find(c => c.id === id);
+      
+      if (capOriginale) {
+        const residuo = capOriginale.residuo ?? 0;
+        const importoDefault = residuo > 0 ? residuo : 0;
+
+        capitoliDettaglio.value.push({
+          id: id,
+          nome: capOriginale.nome,
+          importo_totale: capOriginale.importo_totale ?? 0,
+          residuo: residuo,
+          importo_da_usare: importoDefault, 
+          note: ''
+        });
+      }
+    }
+  });
+});
+
 const submit = () => {
+  form.capitoli_config = capitoliDettaglio.value.map(c => ({
+    id: c.id,
+    importo: c.importo_da_usare,
+    note: c.note
+  }));
+
   form.post(route(...generateRoute(
     'gestionale.esercizi.piani-rate.store',
     { condominio: props.condominio.id, esercizio: props.esercizio.id }
@@ -168,7 +239,14 @@ const submit = () => {
                 <CheckCircle class="w-5 h-5 text-blue-600 shrink-0" />
                 <div>
                   <h4 class="font-bold text-blue-900 dark:text-blue-100 text-sm">Saldi anagrafiche iniziali disponibili</h4>
-                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">{{ saldoInfo.motivo }}</p>
+                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    <span v-if="saldoInfo.saldo === 0">
+                      Rilevati saldi a debito/credito nelle anagrafiche che verranno applicati.
+                    </span>
+                    <span v-else>
+                      {{ saldoInfo.motivo }}
+                    </span>
+                  </p>
                 </div>
               </div>
             </div>
@@ -221,10 +299,15 @@ const submit = () => {
             </div>
           </div>
 
-          <div class="bg-gray-50 dark:bg-slate-800/50 p-4 rounded-lg border relative">
-            <Label :class="{ 'opacity-50': !form.gestione_id }">Filtra per capitoli di spesa (Opzionale)</Label>
+          <div class="bg-gray-50 dark:bg-slate-800/50 p-4 rounded-lg border relative transition-all duration-300">
+            <div class="flex justify-between items-center mb-2">
+                <Label :class="{ 'opacity-50': !form.gestione_id }">Filtra per capitoli di spesa (Opzionale)</Label>
+                <span v-if="capitoliDettaglio.length > 0" class="text-xs bg-primary/10 text-primary px-2 py-1 rounded font-medium">
+                    {{ capitoliDettaglio.length }} voci selezionate
+                </span>
+            </div>
             
-            <div class="relative mt-2">
+            <div class="relative">
               <v-select
                   multiple
                   v-model="form.capitoli_ids"
@@ -232,23 +315,36 @@ const submit = () => {
                   label="nome"
                   :reduce="c => c.id"
                   :disabled="!form.gestione_id || isLoadingCapitoli"
-                  :selectable="(option: Capitolo) => !option.disabled"
+                  :selectable="(option: Capitolo) => !option.disabled" 
                   :placeholder="!form.gestione_id ? 'Seleziona prima una gestione...' : 'Includi tutto il bilancio'"
                   class="w-full v-select-custom"
               >
                   <template #spinner>
                       <LoaderCircle v-if="isLoadingCapitoli" class="w-4 h-4 animate-spin mr-2" />
                   </template>
+                  
                   <template #option="option: Capitolo">
-                      <div :class="{ 'opacity-40 italic': option.disabled }" class="flex justify-between w-full items-center py-1">
-                          <span :class="{ 'font-bold text-primary': option.nome.startsWith('[') }">
-                              {{ option.nome }}
-                          </span>
-                          <span v-if="option.disabled" class="text-[9px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2">
-                              In uso
-                          </span>
+                      <div :class="{ 'opacity-50 grayscale': option.disabled }" class="flex justify-between w-full items-center py-1">
+                          <div class="flex flex-col">
+                              <span :class="{ 'font-bold text-gray-800': option.nome.startsWith('[') }">
+                                  {{ option.nome }}
+                              </span>
+                              <span class="text-[10px] text-gray-500">
+                                  Totale: € {{ formatMoney(option.importo_totale || 0) }}
+                              </span>
+                          </div>
+                          
+                          <div class="flex items-center">
+                              <span v-if="option.disabled" class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200">
+                                  <Ban class="w-3 h-3"/> Esaurito
+                              </span>
+                              <span v-else class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200">
+                                  <Wallet class="w-3 h-3"/> Disp: € {{ formatMoney(option.residuo || 0) }}
+                              </span>
+                          </div>
                       </div>
                   </template>
+
                   <template #selected-option="option: Capitolo">
                     <div class="flex items-center">
                         <span :class="{ 'font-bold': option.nome.startsWith('[') }">
@@ -259,7 +355,80 @@ const submit = () => {
               </v-select>
 
             </div>
-            <p class="text-[11px] text-gray-500 mt-2 italic">Seleziona voci specifiche se vuoi un piano rate parziale.</p>
+            <p class="text-[11px] text-gray-500 mt-2 italic flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Voci esaurite
+                <span class="w-2 h-2 rounded-full bg-green-500 inline-block ml-2"></span> Voci disponibili
+            </p>
+          </div>
+
+          <div v-if="capitoliDettaglio.length > 0" class="mt-4 border border-gray-200 rounded-lg overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+              <span class="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                  <List class="w-4 h-4"/> Ripartizione Budget
+              </span>
+              <span class="text-sm font-mono font-bold text-primary bg-white px-3 py-1 rounded border shadow-sm">
+                  Totale: € {{ totaleSelezionatoFormatted }}
+              </span>
+            </div>
+            
+            <div class="divide-y divide-gray-100 max-h-[350px] overflow-y-auto bg-white">
+              <div v-for="(cap, index) in capitoliDettaglio" :key="cap.id" class="p-3 hover:bg-gray-50 transition-colors group">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-900 truncate" :title="cap.nome">{{ cap.nome }}</div>
+                    <div class="text-xs text-gray-500 mt-1 flex flex-wrap gap-2 items-center">
+                      <span class="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">Tot: € {{ formatMoney(cap.importo_totale) }}</span>
+                      <span class="text-gray-300">|</span>
+                      <span :class="{'text-green-700 bg-green-50': cap.residuo > 0, 'text-red-600 bg-red-50': cap.residuo <= 0}" class="px-1.5 py-0.5 rounded font-medium">
+                        Residuo: € {{ formatMoney(cap.residuo) }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    
+                    <div class="w-32">
+                      <Label class="sr-only">Importo</Label>
+                      <div class="relative">
+                        <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">€</span>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          v-model="cap.importo_da_usare" 
+                          class="pl-6 h-9 text-right text-sm font-mono font-bold transition-all"
+                          :max="cap.residuo"
+                          :class="{
+                              'border-red-500 ring-red-200 bg-red-50 text-red-700': (cap.importo_da_usare || 0) > cap.residuo,
+                              'border-green-500 ring-green-100': (cap.importo_da_usare || 0) > 0 && (cap.importo_da_usare || 0) <= cap.residuo
+                          }"
+                        />
+                      </div>
+                    </div>
+
+                    <div class="w-40 sm:w-56">
+                      <Label class="sr-only">Note</Label>
+                      <Input 
+                        v-model="cap.note" 
+                        placeholder="Es. Quota fissa..." 
+                        class="h-9 text-xs"
+                      />
+                    </div>
+                    
+                    <button @click="rimuoviCapitolo(cap.id)" type="button" class="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all">
+                      <span class="sr-only">Rimuovi</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                
+                <div v-if="(cap.importo_da_usare || 0) > cap.residuo" class="text-[11px] text-red-600 mt-2 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded animate-pulse">
+                  <AlertTriangle class="w-3 h-3"/> Attenzione: L'importo supera il residuo disponibile (€ {{ formatMoney(cap.residuo) }}).
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
@@ -272,6 +441,7 @@ const submit = () => {
               <Label>Giorno scadenza</Label>
               <Input v-model.number="form.giorno_scadenza" class="mt-1 w-full" />
             </div>
+            
             <div v-if="mostraDistribuzioneSaldo">
               <Label class="text-blue-600 font-semibold">Distribuzione saldo iniziale</Label>
               <v-select

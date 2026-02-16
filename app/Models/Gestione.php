@@ -22,11 +22,14 @@ class Gestione extends Model
         'data_inizio',
         'data_fine',
         'note',
+        'saldo_applicato', 
+        'nota_saldo',
     ];
 
     protected $casts = [
         'data_inizio' => 'date',
         'data_fine'   => 'date',
+        'saldo_applicato' => 'boolean',
     ];
 
     public function condominio()

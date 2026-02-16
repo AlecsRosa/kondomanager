@@ -4,6 +4,34 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 
 ---
 
+## [1.9.3] - Penny Perfect & Smart Push-Down
+
+Questa release rifinisce il motore "Accounting Intelligence Core" (v1.9) introducendo la precisione assoluta nei calcoli e una gestione intelligente dei capitoli raggruppati.
+
+### 🧠 Accounting Core Intelligence: Evolution
+
+* **Frazionamento Voci di Spesa (Partial Budgeting):**
+    * Introdotta la possibilità di includere nei Piani Rate solo una quota parte dell'importo totale di una voce di spesa (es. richiedere un acconto di 400€ su una spesa da 1.000€).
+    * Il sistema traccia automaticamente il "Residuo Disponibile" per i piani successivi e impedisce il superamento del budget preventivato.
+* **Algoritmo "Penny Perfect" (Quadratura Centesimale):**
+    * Il motore di calcolo delle quote (`CalcoloQuoteService`) è stato riscritto per eliminare gli errori di arrotondamento.
+    * Implementata logica di quadratura: l'ultimo beneficiario di una ripartizione assorbe matematicamente l'eventuale resto, garantendo che la somma delle quote corrisponda al 100% dell'importo speso, al centesimo.
+* **Logica "Smart Folder Push-Down":**
+    * Supporto avanzato per i "Capitoli Contenitore" (Folder) nei piani rate parziali.
+    * Se si assegna un importo forzato a un Capitolo Padre (es. "Spese Generali: 200€") che non ha tabella millesimale propria, il sistema calcola automaticamente il rapporto proporzionale rispetto al preventivo originale e "spinge" l'override sui sottoconti figli, distribuendo l'importo corretto in base alle loro tabelle specifiche.
+* **Gestione Piani Integrativi (No-Duplicate Balance):**
+    * Introdotta logica decisionale ibrida (Controller + DB) nell'Action di generazione.
+    * Il sistema ora distingue tra "Primo Piano" (che applica i saldi pregressi) e "Piani Integrativi" (che contengono solo le nuove spese), prevenendo la duplicazione dei debiti/crediti iniziali.
+
+### 🐛 Bug Fixes & Refactoring
+
+* **Correzione Ricorsione Override:** Risolto un bug critico nel calcolo dei piani parziali dove l'importo del padre si sommava erroneamente a quello dei figli. Ora l'override sul nodo padre interrompe correttamente la ricorsione.
+* **Tooltip Saldi Intelligenti:** Il frontend ora mostra i dettagli dei saldi (pallini rossi/blu) solo se il piano rate specifico li include effettivamente (basandosi sullo snapshot delle regole di calcolo), evitando confusione nei piani integrativi.
+* **Fix Totali Widget Copertura:** La risorsa API ora calcola il totale del piano rate leggendo correttamente gli importi parziali dalla tabella pivot, allineando il widget di copertura con il reale valore delle rate generate.
+* **Mass Assignment Protection:** Aggiunti `saldo_applicato` e `nota_saldo` al modello `Gestione` per permettere il corretto salvataggio dello stato dei saldi.
+
+---
+
 ## [1.9.0] - Accounting Intelligence Core
 
 Questa release rappresenta il più grande aggiornamento strutturale al motore contabile di Kondomanager.
