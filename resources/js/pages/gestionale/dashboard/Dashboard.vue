@@ -249,7 +249,7 @@ const suggerimentoOperativo = computed(() => {
                     <div class="flex items-center justify-between border-b p-6">
                         <div>
                             <h3 class="text-lg font-black text-slate-900 dark:text-white">Audit spese scoperte</h3>
-                            <p class="text-xs text-slate-500 uppercase font-bold tracking-tight">Elenco voci del preventivo non incluse in nessun piano rate</p>
+                            <p class="text-xs text-slate-500 uppercase font-bold tracking-tight">Elenco voci del preventivo non coperte o parzialmente scoperte</p>
                         </div>
                         <button @click="showOrphansModal = false" class="rounded-full p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                             <X class="w-5 h-5" />
@@ -259,8 +259,7 @@ const suggerimentoOperativo = computed(() => {
                     <div class="p-6">
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
                             <strong class="font-bold block mb-1">Cosa fare?</strong>
-                            Queste voci esistono nel piano dei conti ma non sono state assegnate a nessun piano rate. 
-                            Vai nella sezione <strong>piani rate</strong>, entra in un piano (o creane uno nuovo) e usa la funzione <strong>"Sincronizza"</strong> o <strong>"Aggiungi <var></var>oce"</strong>.
+                            Queste voci presentano un deficit di copertura. Vai nei piani rate e usa la funzione 'Sincronizza' o crea un piano integrativo per coprire la differenza
                         </div>
 
                         <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
