@@ -57,13 +57,6 @@ class BudgetCoverageService
             }
         }
 
-        Log::info("DEBUG SERVICE ANALYZE (CASCATA)", [
-            'gestione' => $gestione->nome,
-            'budget_tot' => $totBudget,
-            'pianificato_tot' => $totPianificato,
-            'delta' => $totBudget - $totPianificato
-        ]);
-
         return [
             'status' => 'analyzed',
             'items' => $report,

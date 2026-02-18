@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Database\Factories\Gestionale\PianoRateFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PianoRate extends Model
 {
@@ -60,6 +61,15 @@ class PianoRate extends Model
     public function rate()
     {
         return $this->hasMany(Rata::class);
+    }
+
+    /**
+     * Relazione con lo storico dei movimenti di budget.
+     * Necessaria per il modulo "Sposta Spesa" e Audit Log.
+     */
+    public function budgetMovements(): HasMany
+    {
+        return $this->hasMany(BudgetMovement::class);
     }
 
     /**

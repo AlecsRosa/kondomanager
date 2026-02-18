@@ -12,7 +12,9 @@ import Heading from '@/components/Heading.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { List, CheckCircle2, AlertCircle, Clock, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp } from "lucide-vue-next";
+import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
+import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
+import { List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue"; 
@@ -32,6 +34,8 @@ const props = defineProps<{
   quotePerImmobile: any[],
   ratePure: any[],
   needsMigration: boolean;
+  sources: Array<any>;      
+  destinations: Array<any>; 
   copertura: {
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number }>;
@@ -53,11 +57,12 @@ const flashMessage = computed(() => page.props.flash.message);
 const orphanCheckboxes = reactive<Record<number, boolean>>({});
 
 // --- LOGICA DETACH / RIMozione VOCE ---
-const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean } | null>(null);
+const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number } | null>(null);
 const isDeleteItemModalOpen = ref(false);
 // Stato per l'accordion (default false = chiuso per risparmiare spazio)
 const isCapitoliExpanded = ref(false);
 const isReloadingCapitoli = ref(false);
+const isSpostaSpesaOpen = ref(false); // Stato modale sposta spesa
 
 // La logica diventa semplicissima: Intero vs Intero
 const isDisallineato = computed(() => {
@@ -67,11 +72,38 @@ const isDisallineato = computed(() => {
 });
 
 const confirmDetachItem = (capitolo: any) => {
-    // Blocco visivo immediato se ci sono incassi
+    // 1. BLOCCO INCASSI
     if (aggregates.value.totaleVersato > 0) {
         showFeedback('Azione bloccata', 'Non puoi rimuovere voci se ci sono incassi registrati.', true);
         return;
     }
+
+    // 2. CONTROLLO MOVIMENTI BIDIREZIONALE
+    const movimenti = props.pianoRate.budget_movements || [];
+    const capId = Number(capitolo.id); // Sicurezza sui tipi
+
+    // È una destinazione? (Ha ricevuto soldi)
+    const isDestination = movimenti.some((m: any) => Number(m.destination_conto_id) === capId);
+    
+    // È una sorgente? (Ha inviato soldi)
+    const isSource = movimenti.some((m: any) => Number(m.source_conto_id) === capId);
+
+    if (isDestination || isSource) {
+        let msg = `Il capitolo "${capitolo.nome}" è vincolato. `;
+        
+        if (isDestination) {
+            msg += `Ha RICEVUTO fondi extra da altre voci. `;
+        } else {
+            msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
+        }
+        
+        msg += `Per mantenere la coerenza contabile, devi annullare questi movimenti (restituendo i fondi) prima di eliminare la voce.`;
+
+        showFeedback('Voce bloccata da movimenti', msg, true);
+        return; // Stop
+    }
+
+    // 3. APERTURA DIALOG
     itemToDelete.value = capitolo;
     isDeleteItemModalOpen.value = true;
 };
@@ -110,8 +142,15 @@ const executeDetachItem = () => {
             itemToDelete.value = null;
             showFeedback('Voce rimossa', 'Il piano è stato ricalcolato senza la voce selezionata.', false);
         },
-        onError: () => {
+        onError: (errors) => {
+            // Chiudiamo il dialog di conferma eliminazione
             isDeleteItemModalOpen.value = false;
+            
+            // Cerchiamo il messaggio flash o il primo errore disponibile
+            const msg = page.props.flash.message?.message || Object.values(errors)[0] || "Errore durante la rimozione.";
+            
+            // Mostriamo il Feedback Dialog con l'errore del backend
+            showFeedback('Impossibile rimuovere', msg, true);
         }
     });
 };
@@ -359,6 +398,16 @@ const immobileDettagli = (immobile: any) => {
   return `Int. ${interno} • Piano ${piano}`;
 };
 
+// Funzione helper per capire se la voce è una destinazione di fondi
+const isVoceRicevente = (capitoloId: number) => {
+    if (!props.pianoRate.budget_movements) return false;
+    
+    // Cerchiamo se esiste un movimento dove questa voce è la DESTINAZIONE
+    return props.pianoRate.budget_movements.some((m: any) => 
+        Number(m.destination_conto_id) === Number(capitoloId)
+    );
+};
+
 const isReady = computed(() => props.pianoRate?.numero_rate > 0 && (Array.isArray(props.quotePerAnagrafica) || Array.isArray(props.quotePerImmobile)));
 
 const rateColumns = computed(() => {
@@ -457,7 +506,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 ]);
 </script>
 
-<template>
+<template>   
+
   <Head title="Dettaglio piano rate" />
 
   <GestionaleLayout :breadcrumbs="breadcrumbs">
@@ -568,14 +618,15 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       </TooltipProvider>
                   </div>
 
-                  <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
-                    <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
-                  </Button>
-                  <Button v-else disabled variant="secondary" class="h-9 opacity-70">
-                    <Lock class="w-4 h-4 mr-2" /> Approva per emettere
-                  </Button>
+                    <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
+                        <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
+                    </Button>
 
-                  <Button 
+                    <Button v-else disabled variant="secondary" class="h-9 opacity-70">
+                        <Lock class="w-4 h-4 mr-2" /> Approva per emettere
+                    </Button>
+
+                    <Button 
                         @click="confirmRecalculate"
                         :disabled="aggregates.totaleVersato > 0"
                         class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -589,13 +640,21 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <span class="sm:hidden">Ricalcola</span>
                     </Button>
 
-                  <Link 
-                      :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
-                      class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
-                  >
-                      <List class="w-4 h-4" />
-                      <span>Lista</span>
-                  </Link>
+                    <Button 
+                        variant="outline" 
+                        class="h-9 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                        @click="isSpostaSpesaOpen = true"
+                    >
+                        <ArrowRightLeft class="w-4 h-4 mr-2" /> Sposta Spesa
+                    </Button>
+
+                    <Link 
+                        :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
+                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
+                    >
+                        <List class="w-4 h-4" />
+                        <span>Lista</span>
+                    </Link>
               </div>
             </div>
 
@@ -668,26 +727,73 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                     <div v-if="props.pianoRate.capitoli?.length" class="divide-y divide-gray-100">
                         <div v-for="capitolo in props.pianoRate.capitoli" :key="capitolo.id" class="flex items-start justify-between px-4 py-3 hover:bg-slate-50 group transition-colors">
                             
-                            <div class="flex flex-col gap-0.5">
-                                <div class="flex items-center gap-2">
+                            <div class="flex flex-col gap-1"> <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-sm font-semibold text-gray-800">{{ capitolo.nome }}</span>
-                                    <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 rounded-md font-bold uppercase tracking-wider">
-                                        Gruppo
+                                    
+                                    <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
+                                        <Layers class="w-3 h-3" /> Gruppo
+                                    </span>
+
+                                    <span 
+                                        v-if="isVoceRicevente(capitolo.id)" 
+                                        class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
+                                        title="Questa voce ha ricevuto budget da un altro capitolo"
+                                    >
+                                        <ArrowRightLeft class="w-3 h-3" /> Integra
+                                    </span>
+
+                                    <TooltipProvider v-if="capitolo.is_frazionato && !isVoceRicevente(capitolo.id)">
+                                        <Tooltip :delayDuration="300">
+                                            <TooltipTrigger as-child>
+                                                <span class="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 cursor-help">
+                                                    <PieChart class="w-3 h-3" /> Parziale
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent class="bg-slate-900 text-white border-slate-800 text-xs">
+                                                <p v-if="capitolo.is_parent">Questo gruppo è incluso parzialmente.</p>
+                                                <p v-else>Importo ridotto rispetto al preventivo originale.</p>
+                                                <p class="font-mono mt-1 opacity-80">
+                                                    Totale originale: {{ euro(capitolo.importo_originale) }}
+                                                </p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+
+                                    <span 
+                                        v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" 
+                                        class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
+                                    >
+                                        <CheckCircle2 class="w-3 h-3" /> Standard
                                     </span>
                                 </div>
                                 
                                 <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">
                                     Include: {{ capitolo.figli_names }}
                                 </p>
+                                
+                                <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1">
+                                    Include fondi spostati da altre voci 
+                                    <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">
+                                        (vedi storico <History class="w-2.5 h-2.5" />)
+                                    </span>
+                                </p>
                             </div>
 
                             <div class="flex items-center gap-4">
+
+                                <BudgetHistoryPopover 
+                                    :capitolo-id="capitolo.id"
+                                    :current-amount="capitolo.importo"
+                                    :movements="props.pianoRate.budget_movements || []"
+                                />
+                    
                                 <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
                                 
                                 <button 
                                     @click="confirmDetachItem(capitolo)"
-                                    :disabled="!switchState || aggregates.totaleVersato > 0"
-                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 hover:bg-red-50 "
+                                    :disabled="switchState || aggregates.totaleVersato > 0"
+                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 transition-colors"
+                                    :class="{ 'opacity-50 cursor-not-allowed': switchState || aggregates.totaleVersato > 0, 'hover:bg-red-50': !(switchState || aggregates.totaleVersato > 0) }"
                                     title="Rimuovi voce e ricalcola"
                                 >
                                     <Trash2 class="w-4 h-4" />
@@ -1035,32 +1141,52 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <ConfirmDialog 
         v-model="isDeleteItemModalOpen"
         title="Rimuovere voce dal piano?"
-        confirm-text="Conferma rimozione"
+        confirm-text="Sì, rimuovi e ricalcola"
         variant="destructive"
         @confirm="executeDetachItem"
     >
         <div v-if="itemToDelete?.is_parent" class="bg-amber-50 p-3 rounded-md border border-amber-200 text-amber-800 mb-3 mt-2">
             <p class="font-bold flex items-center gap-2 mb-1 text-xs uppercase">
-                <AlertTriangle class="w-3 h-3" /> Attenzione: voce di spesa raggruppata
+                <AlertTriangle class="w-3 h-3" /> Attenzione: voce raggruppata
             </p>
             <p class="text-xs">
-                Stai rimuovendo il capitolo <strong>{{ itemToDelete.nome }}</strong>.<br>
-                Poiché è un "Capitolo Padre", questa azione <strong>dissocierà l'intero blocco</strong> (inclusi tutti i sottoconti).
-            </p>
-            <p class="text-[11px] mt-2 italic border-t border-amber-200/50 pt-1">
-                Nota: Non puoi staccare un singolo figlio da qui. Devi rimuovere questo gruppo e poi usare "Sincronizza" per aggiungere solo i figli che desideri.
+                Stai rimuovendo il gruppo <strong>{{ itemToDelete.nome }}</strong>.<br>
+                Questa azione <strong>eliminerà anche tutti i sottoconti</strong> collegati.
             </p>
         </div>
 
-        <div v-else class="mt-2">
-            Stai per rimuovere la voce <strong>{{ itemToDelete?.nome }}</strong> dal piano rate.<br>
-            La voce tornerà disponibile tra gli "Orfani" per essere assegnata altrove.
+        <div v-else class="text-sm text-gray-700">
+            Stai per eliminare la voce di spesa:
+            <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center">
+                <span>{{ itemToDelete?.nome }}</span>
+                <span class="font-bold text-slate-900">{{ euro(itemToDelete?.importo) }}</span>
+            </div>
         </div>
 
-        <div class="mt-4 text-xs text-gray-500 bg-gray-50 p-2 rounded border">
-            <strong>Conseguenza:</strong> Tutte le rate verranno ricalcolate immediatamente e gli importi scenderanno.
+        <div class="mt-4 space-y-3">
+            <div class="flex items-start gap-2 text-xs text-slate-600">
+                <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>La voce tornerà tra gli "Orfani" e potrà essere riaggiunta in futuro.</span>
+            </div>
+            <div class="flex items-start gap-2 text-xs text-slate-600">
+                <PieChart class="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Il <strong>totale del piano diminuirà</strong> dell'importo indicato.</span>
+            </div>
+            <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100">
+                <RotateCw class="w-4 h-4 shrink-0 mt-0.5" />
+                <span><strong>Importante:</strong> Tutte le rate dei condomini verranno ricalcolate immediatamente.</span>
+            </div>
         </div>
     </ConfirmDialog>
+
+    <ModalSpostaSpesa 
+        v-model:show="isSpostaSpesaOpen"
+        :piano-rate-id="props.pianoRate.id"
+        :condominio-id="props.condominio.id"
+        :sources="props.sources"
+        :destinations="props.destinations"
+        @success="showFeedback('Budget Spostato', 'Operazione completata con successo. Il residuo è stato aggiornato.', false)"
+    />
 
   </GestionaleLayout>
 </template>

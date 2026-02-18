@@ -16,6 +16,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
 use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
@@ -133,6 +134,10 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::delete('esercizi/{esercizio}/piani-rate/{pianoRate}/capitoli/{capitolo}', [PianoRateController::class, 'detachCapitolo'])
         ->name('piani-rate.capitoli.detach');
+    
+    // Route for "Sposta Spesa" (Budget Reallocation)
+    Route::post('/piani-rate/{pianoRate}/move-budget', [BudgetMovementController::class, 'store'])
+        ->name('piani-rate.move-budget');
     
     // Rotta per vedere l'estratto conto (accessibile dal piano rate)
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])

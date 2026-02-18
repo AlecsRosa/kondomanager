@@ -22,6 +22,11 @@ Questa release rifinisce il motore "Accounting Intelligence Core" (v1.9) introdu
 * **Gestione Piani Integrativi (No-Duplicate Balance):**
     * Introdotta logica decisionale ibrida (Controller + DB) nell'Action di generazione.
     * Il sistema ora distingue tra "Primo Piano" (che applica i saldi pregressi) e "Piani Integrativi" (che contengono solo le nuove spese), prevenendo la duplicazione dei debiti/crediti iniziali.
+* **Sposta Spesa (Budget Reallocation):**
+    * Introdotta la possibilità di spostare quote di budget tra diverse voci di spesa all'interno della stessa gestione (es. spostare 100€ dal "Compenso Amministratore" alla "Manutenzione Giardino").
+    * **Audit Trail:** Ogni spostamento viene tracciato nella nuova tabella `budget_movements`, registrando l'autore dell'operazione, la data, l'importo e la causale.
+    * **History Popover:** Implementata un'icona "Storico" (🕒) dinamica nel Piano Rate che permette di visualizzare la "genesi" dell'importo attuale (es. Originale 300€ - 100€ spostati = Attuale 200€).
+    * **Protezione Bidirezionale:** Il sistema impedisce la rimozione di voci di spesa dal piano rate se sono coinvolte in uno spostamento pendente (sia come sorgente che come destinazione), garantendo l'integrità del bilancio.
 
 ### 🐛 Bug Fixes & Refactoring
 

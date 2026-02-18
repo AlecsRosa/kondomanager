@@ -50,8 +50,39 @@ class PianoRateResource extends JsonResource
             'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
             
             'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
+
+            'budget_movements' => $this->whenLoaded('budgetMovements'),
+
+            'capitoli' => $this->whenLoaded('capitoli', function() {
+                return $this->capitoli->map(function ($c) {
+                    $isParent = $c->sottoconti()->exists();
+                    
+                    $importoEffettivo = !is_null($c->pivot->importo) 
+                        ? $c->pivot->importo 
+                        : $c->importo;
+
+                    // FIX: Se è un padre, l'importo originale è la somma dei sottoconti
+                    // Se è una voce singola, è il suo importo standard
+                    $importoOriginale = $isParent 
+                        ? $c->sottoconti->sum('importo') 
+                        : $c->importo;
+
+                    $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
+
+                    return [
+                        'id'                => $c->id,
+                        'nome'              => $c->nome,
+                        'importo'           => (int) $importoEffettivo,
+                        'importo_originale' => (int) $importoOriginale,
+                        'is_frazionato'     => $isFrazionato,
+                        'note'              => $c->pivot->note,
+                        'is_parent'         => $isParent,
+                        'figli_names'       => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                    ];
+                });
+            }),
             
-            'capitoli'        => $this->whenLoaded('capitoli', function() {
+          /*   'capitoli'        => $this->whenLoaded('capitoli', function() {
                 return $this->capitoli->map(function ($c) {
                     $isParent = $c->sottoconti()->exists();
                     
@@ -69,7 +100,7 @@ class PianoRateResource extends JsonResource
                         'figli_names' => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
                     ];
                 });
-            }),
+            }), */
         ];
     }
 }
