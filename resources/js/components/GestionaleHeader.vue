@@ -66,65 +66,65 @@ const getAccessibleChildren = (item: NavItem): LinkItem[] => {
     return item.children.filter(child => canAccess(child));
 };
 
-const mainNavItems: NavItem[] = [
+const mainNavItems = computed<NavItem[]>(() => [
     {
         type: 'link',
         title: 'Dashboard',
-        href: generatePath('gestionale/:condominio', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio', { condominio: condominio.value?.id ?? '' }),
         icon: LayoutGrid
     },
     {
         type: 'link',
         title: 'Condominio',
-        href: generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/struttura', { condominio: condominio.value?.id ?? '' }),
         icon: BuildingIcon
     },
     {
         type: 'link',
         title: 'Immobili',
-        href: generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/immobili', { condominio: condominio.value?.id ?? '' }),
         icon: HousePlus,
        
     },
     {
         type: 'link',
         title: 'Tabelle',
-        href: generatePath('gestionale/:condominio/tabelle', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/tabelle', { condominio: condominio.value?.id ?? '' }),
         icon: Table2,
        
     },
     {
         type: 'link',
         title: 'Esercizi',
-        href: generatePath('gestionale/:condominio/esercizi', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi', { condominio: condominio.value?.id ?? '' }),
         icon: Library,
        
     }, 
     {
         type: 'link',
         title: 'Gestioni',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), 
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value?.id ?? '', esercizio: esercizio.value?.id ?? '' }), 
         icon: ListPlus,
     }, 
     {
         type: 'link',
         title: 'Piani conti',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value?.id ?? '', esercizio: esercizio.value?.id ?? '' }),
         icon: HandCoins,
     },
     {
         type: 'link',
         title: 'Piani rate',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value?.id ?? '', esercizio: esercizio.value?.id ?? '' }),
         icon: Wallet,
     },
     {
         type: 'link',
         title: 'Movimenti',
-        href: generatePath('gestionale/:condominio/movimenti', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/movimenti', { condominio: condominio.value?.id ?? '' }),
         icon: ArrowUpDown,
     }
-]; 
+]); 
 
 const rightNavItems: LinkItem[] = [
     {
@@ -152,7 +152,7 @@ const rightNavItems: LinkItem[] = [
 
  // Filtered items
 const accessibleMainItems = computed(() => 
-    mainNavItems
+    mainNavItems.value
         .filter(item => canAccess(item))
         .filter(item => item.type === 'link' || getAccessibleChildren(item).length > 0)
 );
