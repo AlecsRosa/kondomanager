@@ -32,6 +32,11 @@ class CreatePianoRateRequest extends FormRequest
             // Assicurati che siano conti validi
             'capitoli_ids'         => 'nullable|array',
             'capitoli_ids.*'       => 'exists:conti,id', 
+            // NUOVO: Validazione della configurazione dettagliata
+            'capitoli_config'      => 'nullable|array',
+            'capitoli_config.*.id' => 'required|exists:conti,id',
+            'capitoli_config.*.importo' => 'nullable|numeric|min:0', 
+            'capitoli_config.*.note' => 'nullable|string|max:255',
             
         ];
     }

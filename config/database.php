@@ -51,12 +51,31 @@ return [
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
+
+            // ============================================================================
+            // CONFIGURAZIONE ADATTIVA CHARSET
+            // ============================================================================
+            // Permette l'utilizzo di utf8mb4 con MySQL 5.5 o versioni precedenti.
+            // In caso di incompatibilità, impostare nel .env:
+            // DB_CHARSET=utf8
+            // DB_COLLATION=utf8_unicode_ci
+            // ============================================================================\
+
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            
+            // ============================================================================
+            // CONFIGURAZIONE ADATTIVA ENGINE
+            // ============================================================================
+            // Permette l'utilizzo del motore InnoDB con MySQL 5.5 o versioni precedenti.
+            // Per forzare InnoDB con ROW_FORMAT=DYNAMIC, impostare nel .env:
+            // DB_ENGINE="InnoDB ROW_FORMAT=DYNAMIC"
+            // ============================================================================
+            
+            'engine' => env('DB_ENGINE', null),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

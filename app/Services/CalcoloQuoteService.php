@@ -9,36 +9,33 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Servizio per il calcolo delle quote di spesa/entrata per ogni gestione.
- * VERSION: 1.8.1 (FIXED)
+ * VERSION: 1.9.3 (PENNY PERFECT - Push Down with Quadrature)
  */
 class CalcoloQuoteService
 {
     private ?Gestione $gestioneCorrente = null;
+    private array $pivotOverrides = [];
 
-    /**
-     * @param Gestione $gestione
-     * @param PianoRate|null $pianoRate
-     * @return array<int, array<int, int>>
-     */
     public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
     {
         $this->gestioneCorrente = $gestione;
+        $this->pivotOverrides = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
-        if (!$pianoConto) {
-            Log::warning("Nessun piano conti trovato per la gestione", ['gestione_id' => $gestione->id]);
-            return [];
-        }
+        if (!$pianoConto) return [];
 
-        // 1. RECUPERO ID CAPITOLI FILTRATI (SE ESISTONO)
         $capitoliIds = [];
         if ($pianoRate) {
-            // Assicurati che la relazione sia caricata o la carichiamo ora
-            $capitoliIds = $pianoRate->capitoli()->pluck('conto_id')->toArray();
+            $pianoRate->load('capitoli');
+            foreach ($pianoRate->capitoli as $capitolo) {
+                $capitoliIds[] = $capitolo->id;
+                if (!is_null($capitolo->pivot->importo)) {
+                    $this->pivotOverrides[$capitolo->id] = (int) $capitolo->pivot->importo;
+                }
+            }
         }
 
-        // 2. QUERY CONTI
         $query = $pianoConto->conti()
             ->with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
@@ -46,49 +43,81 @@ class CalcoloQuoteService
                 'sottoconti.sottoconti', 
             ]);
 
-        // 🔥 FIX LOGICO QUI SOTTO 🔥
         if (!empty($capitoliIds)) {
-            // CASO A: Filtro Attivo (Piano Rate parziale)
-            // Cerchiamo ESATTAMENTE i conti selezionati, che siano radici o figli.
-            // NON mettiamo whereNull('parent_id') altrimenti i figli vengono esclusi.
             $query->whereIn('id', $capitoliIds);
         } else {
-            // CASO B: Nessun Filtro (Piano Rate completo)
-            // Comportamento standard: prendiamo le Radici e scendiamo ricorsivamente.
             $query->whereNull('parent_id');
         }
 
         $conti = $query->get();
 
-        Log::info("=== INIZIO CALCOLO QUOTE (FIXED) ===", [
-            'gestione_id' => $gestione->id,
+        Log::info("=== INIZIO CALCOLO QUOTE V1.9.3 (Penny Perfect) ===", [
             'piano_rate_id' => $pianoRate?->id,
-            'capitoli_filtrati' => count($capitoliIds),
-            'conti_trovati' => $conti->count() // Se questo è > 0, il fix funziona
+            'overrides' => count($this->pivotOverrides)
         ]);
 
         $this->processaConti($conti, $totali);
 
-        $totaleCentesimi = array_sum(array_map('array_sum', $totali));
-        
-        // Log di verifica finale
-        Log::info("Quote generate", ['totale_centesimi' => $totaleCentesimi]);
-
         return $totali;
     }
 
-    /**
-     * @param Collection<int, object> $conti
-     * @param array<int, array<int, int>> $totali
-     */
     private function processaConti(Collection $conti, array &$totali): void
     {
         foreach ($conti as $conto) {
+            
+            $hasOverride = isset($this->pivotOverrides[$conto->id]);
+            
+            if ($hasOverride) {
+                $importoOverride = $this->pivotOverrides[$conto->id];
+
+                // A. È una foglia -> Distribuisci
+                if ($conto->tabelleMillesimali->isNotEmpty()) {
+                    $importoConto = in_array($conto->tipo, ['spesa', 'uscita']) 
+                        ? abs($importoOverride) : -abs($importoOverride);
+                    
+                    $this->distribuisciSuTabelle($conto, $importoConto, $totali);
+                    continue; 
+                }
+                
+                // B. È una cartella -> PUSH DOWN con QUADRATURA
+                elseif ($conto->sottoconti->isNotEmpty()) {
+                    
+                    $totaleOriginaleFigli = (int) $conto->sottoconti->sum('importo');
+
+                    if ($totaleOriginaleFigli != 0) {
+                        $ratio = $importoOverride / $totaleOriginaleFigli;
+                        
+                        // Variabili per la quadratura
+                        $sommaAssegnata = 0;
+                        $counter = 0;
+                        $totaleFigli = $conto->sottoconti->count();
+
+                        foreach ($conto->sottoconti as $figlio) {
+                            $counter++;
+                            
+                            // Se è l'ultimo figlio, assegniamo il residuo matematico esatto
+                            if ($counter === $totaleFigli) {
+                                $quotaFiglio = $importoOverride - $sommaAssegnata;
+                            } else {
+                                $quotaFiglio = (int) round($figlio->importo * $ratio);
+                                $sommaAssegnata += $quotaFiglio;
+                            }
+
+                            // Salviamo l'override virtuale per il figlio
+                            $this->pivotOverrides[$figlio->id] = $quotaFiglio;
+                        }
+                        
+                        $this->processaConti($conto->sottoconti, $totali);
+                        continue;
+                    }
+                }
+                
+                continue; 
+            }
+
+            // STANDARD
             $importoLordo = (int) $conto->importo;
             
-            // --- INIZIO LOGICA DI CALCOLO ---
-            // Se l'importo è 0, controlliamo comunque i sottoconti se ci sono,
-            // perché potrebbero avere importi loro.
             if ($importoLordo !== 0) {
                 $tipo = $conto->tipo ?? 'spesa';
                 $importoConto = in_array($tipo, ['spesa', 'uscita'])
@@ -98,19 +127,12 @@ class CalcoloQuoteService
                 $this->distribuisciSuTabelle($conto, $importoConto, $totali);
             }
 
-            // Ricorsione sui figli
-            // Nota: Se abbiamo selezionato un figlio direttamente nel filtro iniziale,
-            // $conto->sottoconti sarà vuoto (o non caricato) e la ricorsione si ferma giustamente qui.
-            // Se abbiamo selezionato una radice, scenderà nei figli.
             if ($conto->sottoconti && $conto->sottoconti->count() > 0) {
                 $this->processaConti($conto->sottoconti, $totali);
             }
         }
     }
 
-    /**
-     * Logica estratta per pulizia, identica alla tua v1.8
-     */
     private function distribuisciSuTabelle($conto, $importoConto, array &$totali)
     {
         $tipo = $conto->tipo ?? 'spesa';
@@ -181,7 +203,6 @@ class CalcoloQuoteService
         $pesoTotale = array_sum($weights);
         if ($pesoTotale <= 0.0) return;
 
-        // Normalizzazione pesi
         foreach ($weights as $key => $w) {
             $weights[$key] = $w / $pesoTotale;
         }
@@ -196,8 +217,6 @@ class CalcoloQuoteService
 
     private function distribuisciImporto(array $weights, int $importoTotale): array
     {
-        // ... (Il tuo codice di distribuzione esistente è corretto) ...
-        // Lo copio per completezza
         $result = [];
         if ($importoTotale === 0) {
             foreach ($weights as $key => $_) { $result[$key] = 0; }

@@ -20,7 +20,7 @@ interface Emits {
 interface Props {
   show: boolean
   conto: Conto | null
-  condominioId: string
+  condominioId: number
 }
 
 const props = defineProps<Props>()

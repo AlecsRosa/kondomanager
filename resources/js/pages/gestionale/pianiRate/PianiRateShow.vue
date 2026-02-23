@@ -1,6 +1,6 @@
 <script setup lang="ts">
     
-import { ref, computed, watch } from "vue";
+import { ref, reactive, computed, watch } from "vue";
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
@@ -9,42 +9,16 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Heading from '@/components/Heading.vue';
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
-} from '@/components/ui/tooltip';
-import { 
-  List, 
-  CheckCircle2, 
-  AlertCircle, 
-  Clock, 
-  AlertTriangle,
-  Ban, 
-  PieChart, 
-  Coins,
-  RotateCw,
-  Info,
-  Wallet,
-  Lock,
-  RotateCcw,
-  XCircle
-} from "lucide-vue-next";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
+import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
+import { List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue"; 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BreadcrumbItem } from '@/types';
@@ -59,7 +33,13 @@ const props = defineProps<{
   quotePerAnagrafica: any[],
   quotePerImmobile: any[],
   ratePure: any[],
-  needsMigration: boolean; // <--- NUOVA PROP
+  needsMigration: boolean;
+  sources: Array<any>;      
+  destinations: Array<any>; 
+  copertura: {
+      scoperto_count: number;
+      orfani: Array<{ id: number; nome: string; importo: number }>;
+  } | null; 
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -71,6 +51,116 @@ const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
+// --- LOGICA SINCRONIZZAZIONE GRANULARE (SOLUZIONE REATTIVA) ---
+// Usiamo un oggetto reattivo per mappare ID -> Booleano
+// Questo garantisce compatibilità totale con v-model di componenti UI
+const orphanCheckboxes = reactive<Record<number, boolean>>({});
+
+// --- LOGICA DETACH / RIMozione VOCE ---
+const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number } | null>(null);
+const isDeleteItemModalOpen = ref(false);
+// Stato per l'accordion (default false = chiuso per risparmiare spazio)
+const isCapitoliExpanded = ref(false);
+const isReloadingCapitoli = ref(false);
+const isSpostaSpesaOpen = ref(false); // Stato modale sposta spesa
+
+// La logica diventa semplicissima: Intero vs Intero
+const isDisallineato = computed(() => {
+    // Tolleranza zero (o minima di 1 centesimo se proprio vogliamo essere permissivi)
+    // Ma matematicamente dovrebbero essere identici.
+    return Math.abs(props.pianoRate.totale_capitoli - aggregates.value.totaleTeorico) > 1; 
+});
+
+const confirmDetachItem = (capitolo: any) => {
+    // 1. BLOCCO INCASSI
+    if (aggregates.value.totaleVersato > 0) {
+        showFeedback('Azione bloccata', 'Non puoi rimuovere voci se ci sono incassi registrati.', true);
+        return;
+    }
+
+    // 2. CONTROLLO MOVIMENTI BIDIREZIONALE
+    const movimenti = props.pianoRate.budget_movements || [];
+    const capId = Number(capitolo.id); // Sicurezza sui tipi
+
+    // È una destinazione? (Ha ricevuto soldi)
+    const isDestination = movimenti.some((m: any) => Number(m.destination_conto_id) === capId);
+    
+    // È una sorgente? (Ha inviato soldi)
+    const isSource = movimenti.some((m: any) => Number(m.source_conto_id) === capId);
+
+    if (isDestination || isSource) {
+        let msg = `Il capitolo "${capitolo.nome}" è vincolato. `;
+        
+        if (isDestination) {
+            msg += `Ha RICEVUTO fondi extra da altre voci. `;
+        } else {
+            msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
+        }
+        
+        msg += `Per mantenere la coerenza contabile, devi annullare questi movimenti (restituendo i fondi) prima di eliminare la voce.`;
+
+        showFeedback('Voce bloccata da movimenti', msg, true);
+        return; // Stop
+    }
+
+    // 3. APERTURA DIALOG
+    itemToDelete.value = capitolo;
+    isDeleteItemModalOpen.value = true;
+};
+
+// Aggiungi questa funzione negli script
+const toggleCapitoli = () => {
+    if (!isCapitoliExpanded.value) {
+        isReloadingCapitoli.value = true;
+        router.reload({ 
+            only: ['pianoRate'], 
+            onFinish: () => {
+                isReloadingCapitoli.value = true; 
+                setTimeout(() => {
+                    isCapitoliExpanded.value = true;
+                    isReloadingCapitoli.value = false;
+                }, 100);
+            }
+        });
+    } else {
+        isCapitoliExpanded.value = false;
+    }
+};
+
+const executeDetachItem = () => {
+    if (!itemToDelete.value) return;
+
+    router.delete(route('admin.gestionale.piani-rate.capitoli.detach', {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id,
+        capitolo: itemToDelete.value.id
+    }), {
+        preserveScroll: true,
+        onSuccess: () => {
+            isDeleteItemModalOpen.value = false;
+            itemToDelete.value = null;
+            showFeedback('Voce rimossa', 'Il piano è stato ricalcolato senza la voce selezionata.', false);
+        },
+        onError: (errors) => {
+            // Chiudiamo il dialog di conferma eliminazione
+            isDeleteItemModalOpen.value = false;
+            
+            // Cerchiamo il messaggio flash o il primo errore disponibile
+            const msg = page.props.flash.message?.message || Object.values(errors)[0] || "Errore durante la rimozione.";
+            
+            // Mostriamo il Feedback Dialog con l'errore del backend
+            showFeedback('Impossibile rimuovere', msg, true);
+        }
+    });
+};
+
+// Computed per ottenere l'array di IDs da inviare al backend
+const selectedOrphanIds = computed(() => {
+    return Object.entries(orphanCheckboxes)
+        .filter(([_, isChecked]) => isChecked)
+        .map(([id, _]) => Number(id));
+});
 
 watch(() => props.pianoRate.stato, (newVal) => {
     switchState.value = newVal === 'approvato';
@@ -105,7 +195,7 @@ const executeMigration = () => {
         preserveScroll: true,
         onSuccess: () => {
             isMigrationDialogOpen.value = false;
-            showFeedback('Aggiornamento Completato', 'Il piano rate è stato aggiornato alla nuova versione contabile (v1.8).', false);
+            showFeedback('Aggiornamento completato', 'Il piano rate è stato aggiornato alla nuova versione contabile (v1.8).', false);
         },
         onError: () => {
              // Questo caso non dovrebbe capitare grazie al filtro "Soft" nel controller, 
@@ -118,7 +208,6 @@ const executeMigration = () => {
 
 const isAlertOpen = ref(false);
 const rataToAnnullareId = ref<number | null>(null);
-
 const isRecalculateAlertOpen = ref(false);
 
 // --- LOGICA CAMBIO STATO ---
@@ -236,6 +325,7 @@ const executeAnnullamento = () => {
 };
 
 // --- RICALCOLO ---
+// Funzione di apertura modale e reset
 const confirmRecalculate = () => {
     const haRateEmesse = props.ratePure?.some(r => r.is_emessa);
 
@@ -247,19 +337,35 @@ const confirmRecalculate = () => {
         );
         return; 
     }
+    
+    // Reset dello stato reattivo (pulizia profonda)
+    for (const key in orphanCheckboxes) {
+        delete orphanCheckboxes[key];
+    }
+    
+    // Inizializzazione: Tutte le voci orfane selezionate di default
+    if (props.copertura?.orfani) {
+        props.copertura.orfani.forEach(o => {
+            orphanCheckboxes[Number(o.id)] = true; 
+        });
+    }
+
     isRecalculateAlertOpen.value = true;
 };
 
+// Funzione di invio al backend (invariata, usa il computed)
 const executeRecalculate = () => {
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
         pianoRate: props.pianoRate.id 
-    }), {}, { 
+    }), {
+        orphan_ids: selectedOrphanIds.value 
+    }, { 
         preserveScroll: true,
         onSuccess: () => {
             isRecalculateAlertOpen.value = false;
-            showFeedback('Ricalcolo Completato', 'Il piano rate è stato rigenerato con successo.', false);
+            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato.', false);
         }
     });
 };
@@ -290,6 +396,16 @@ const immobileDettagli = (immobile: any) => {
   const interno = immobile.interno ?? "-";
   const piano = immobile.piano ?? "-";
   return `Int. ${interno} • Piano ${piano}`;
+};
+
+// Funzione helper per capire se la voce è una destinazione di fondi
+const isVoceRicevente = (capitoloId: number) => {
+    if (!props.pianoRate.budget_movements) return false;
+    
+    // Cerchiamo se esiste un movimento dove questa voce è la DESTINAZIONE
+    return props.pianoRate.budget_movements.some((m: any) => 
+        Number(m.destination_conto_id) === Number(capitoloId)
+    );
 };
 
 const isReady = computed(() => props.pianoRate?.numero_rate > 0 && (Array.isArray(props.quotePerAnagrafica) || Array.isArray(props.quotePerImmobile)));
@@ -390,7 +506,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 ]);
 </script>
 
-<template>
+<template>   
+
   <Head title="Dettaglio piano rate" />
 
   <GestionaleLayout :breadcrumbs="breadcrumbs">
@@ -501,30 +618,43 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       </TooltipProvider>
                   </div>
 
-                  <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
-                    <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
-                  </Button>
-                  <Button v-else disabled variant="secondary" class="h-9 opacity-70">
-                    <Lock class="w-4 h-4 mr-2" /> Approva per emettere
-                  </Button>
+                    <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
+                        <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
+                    </Button>
 
-                  <button 
-                      @click="confirmRecalculate"
-                      class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      title="Ricalcola importi e quote"
-                  >
-                      <RotateCw class="w-4 h-4" />
-                      <span class="hidden sm:inline">Ricalcola</span>
-                      <span class="sm:hidden">Ricalcola</span>
-                  </button>
+                    <Button v-else disabled variant="secondary" class="h-9 opacity-70">
+                        <Lock class="w-4 h-4 mr-2" /> Approva per emettere
+                    </Button>
 
-                  <Link 
-                      :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
-                      class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
-                  >
-                      <List class="w-4 h-4" />
-                      <span>Lista</span>
-                  </Link>
+                    <Button 
+                        @click="confirmRecalculate"
+                        :disabled="aggregates.totaleVersato > 0"
+                        class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        :class="aggregates.totaleVersato > 0 ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400' : 'text-gray-700 hover:bg-gray-50 hover:text-primary'"
+                        title="Ricalcola importi e quote"
+                    >
+                        <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0}" />
+                        <span class="hidden sm:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0}">
+                            {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
+                        </span>
+                        <span class="sm:hidden">Ricalcola</span>
+                    </Button>
+
+                    <Button 
+                        variant="outline" 
+                        class="h-9 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                        @click="isSpostaSpesaOpen = true"
+                    >
+                        <ArrowRightLeft class="w-4 h-4 mr-2" /> Sposta Spesa
+                    </Button>
+
+                    <Link 
+                        :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
+                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
+                    >
+                        <List class="w-4 h-4" />
+                        <span>Lista</span>
+                    </Link>
               </div>
             </div>
 
@@ -550,6 +680,131 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 <Card class="bg-emerald-50/40 shadow-sm border-emerald-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
                 <Card class="bg-blue-50/40 shadow-sm border-blue-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
                 <Card class="bg-gray-50 shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600' : 'text-emerald-600')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
+            </div>
+
+            <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200">
+
+                <button 
+                    @click="toggleCapitoli" 
+                    class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg"
+                    :class="{'rounded-b-lg': !isCapitoliExpanded}"
+                >
+                    <div class="flex items-center gap-2">
+                        <div class="bg-white p-1.5 rounded-md border shadow-sm">
+                            <Wallet class="w-4 h-4 text-emerald-600" />
+                        </div>
+                    <div class="text-left">
+                            <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                Copertura spese
+                                
+                                <Badge 
+                                    v-if="isDisallineato" 
+                                    variant="destructive" 
+                                    class="text-[10px] py-0 px-1.5 animate-pulse"
+                                >
+                                    <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
+                                </Badge>
+                            </h3>
+                            
+                            <p class="text-[10px] text-gray-500">
+                                {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
+                                <span :class="{'text-red-600 font-bold': isDisallineato}">
+                                    totale preventivo: {{ euro(props.pianoRate.totale_capitoli) }}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-primary font-medium" v-if="!isCapitoliExpanded">
+                            {{ isProcessingStatus ? 'Aggiornamento...' : 'Mostra dettagli' }}
+                        </span>
+                        <component :is="isCapitoliExpanded ? ChevronUp : ChevronDown" class="w-4 h-4 text-gray-400" />
+                    </div>
+                </button>
+                
+                <div v-if="isCapitoliExpanded" class="border-t divide-y divide-gray-100 max-h-60 overflow-y-auto bg-white">
+                    <div v-if="props.pianoRate.capitoli?.length" class="divide-y divide-gray-100">
+                        <div v-for="capitolo in props.pianoRate.capitoli" :key="capitolo.id" class="flex items-start justify-between px-4 py-3 hover:bg-slate-50 group transition-colors">
+                            
+                            <div class="flex flex-col gap-1"> <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm font-semibold text-gray-800">{{ capitolo.nome }}</span>
+                                    
+                                    <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
+                                        <Layers class="w-3 h-3" /> Gruppo
+                                    </span>
+
+                                    <span 
+                                        v-if="isVoceRicevente(capitolo.id)" 
+                                        class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
+                                        title="Questa voce ha ricevuto budget da un altro capitolo"
+                                    >
+                                        <ArrowRightLeft class="w-3 h-3" /> Integra
+                                    </span>
+
+                                    <TooltipProvider v-if="capitolo.is_frazionato && !isVoceRicevente(capitolo.id)">
+                                        <Tooltip :delayDuration="300">
+                                            <TooltipTrigger as-child>
+                                                <span class="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1 cursor-help">
+                                                    <PieChart class="w-3 h-3" /> Parziale
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent class="bg-slate-900 text-white border-slate-800 text-xs">
+                                                <p v-if="capitolo.is_parent">Questo gruppo è incluso parzialmente.</p>
+                                                <p v-else>Importo ridotto rispetto al preventivo originale.</p>
+                                                <p class="font-mono mt-1 opacity-80">
+                                                    Totale originale: {{ euro(capitolo.importo_originale) }}
+                                                </p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+
+                                    <span 
+                                        v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" 
+                                        class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
+                                    >
+                                        <CheckCircle2 class="w-3 h-3" /> Standard
+                                    </span>
+                                </div>
+                                
+                                <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">
+                                    Include: {{ capitolo.figli_names }}
+                                </p>
+                                
+                                <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1">
+                                    Include fondi spostati da altre voci 
+                                    <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">
+                                        (vedi storico <History class="w-2.5 h-2.5" />)
+                                    </span>
+                                </p>
+                            </div>
+
+                            <div class="flex items-center gap-4">
+
+                                <BudgetHistoryPopover 
+                                    :capitolo-id="capitolo.id"
+                                    :current-amount="capitolo.importo"
+                                    :movements="props.pianoRate.budget_movements || []"
+                                />
+                    
+                                <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
+                                
+                                <button 
+                                    @click="confirmDetachItem(capitolo)"
+                                    :disabled="switchState || aggregates.totaleVersato > 0"
+                                    class="p-1.5 rounded-md text-gray-300 hover:text-red-600 transition-colors"
+                                    :class="{ 'opacity-50 cursor-not-allowed': switchState || aggregates.totaleVersato > 0, 'hover:bg-red-50': !(switchState || aggregates.totaleVersato > 0) }"
+                                    title="Rimuovi voce e ricalcola"
+                                >
+                                    <Trash2 class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="p-6 text-center text-sm text-gray-400 italic">
+                        Nessuna voce di spesa associata. Usa il tasto "Sincronizza" per aggiungerne.
+                    </div>
+                </div>
             </div>
 
             <TabsContent :value="tab" class="mt-0 space-y-6">
@@ -675,7 +930,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                             <p class="font-bold mb-1">{{ getRataStyle(item.rateMap[col.numero]).label }}</p>
                                             
                                             <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20">
-                                                <p>Incluso Saldo Iniziale:</p>
+                                                <p>Incluso saldo iniziale:</p>
                                                 <p :class="item.saldo_iniziale > 0 ? 'text-red-300' : 'text-blue-300'">
                                                     {{ item.saldo_iniziale > 0 ? 'Debito: ' : 'Credito: ' }} 
                                                     {{ euro(Math.abs(item.saldo_iniziale)) }}
@@ -683,13 +938,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                             </div>
 
                                             <div v-if="tab === 'immobile' && col.numero === 1 && (item.totale_debiti > 0 || item.totale_crediti < 0)" class="mb-1 pb-1 border-b border-white/20 text-left">
-                                                <p class="font-semibold text-center mb-1">Saldi Pregressi:</p>
+                                                <p class="font-semibold text-center mb-1">Saldi pregressi:</p>
                                                 <div v-if="item.totale_debiti > 0" class="text-red-300 whitespace-nowrap flex justify-between gap-2"><span>Debiti:</span><span>{{ euro(item.totale_debiti) }}</span></div>
                                                 <div v-if="item.totale_crediti < 0" class="text-blue-300 whitespace-nowrap flex justify-between gap-2"><span>Crediti:</span><span>{{ euro(Math.abs(item.totale_crediti)) }}</span></div>
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium border-t border-white/10 pt-1">
-                                                    <span v-if="(item.totale_debiti + item.totale_crediti) === 0" class="text-emerald-300">Compensazione Totale (0€)</span>
-                                                    <span v-else-if="(item.totale_debiti + item.totale_crediti) > 0" class="text-red-200">Residuo Debito: {{ euro(item.totale_debiti + item.totale_crediti) }}</span>
-                                                    <span v-else class="text-blue-200">Residuo Credito: {{ euro(Math.abs(item.totale_debiti + item.totale_crediti)) }}</span>
+                                                    <span v-if="(item.totale_debiti + item.totale_crediti) === 0" class="text-emerald-300">Compensazione totale (0€)</span>
+                                                    <span v-else-if="(item.totale_debiti + item.totale_crediti) > 0" class="text-red-200">Residuo debito: {{ euro(item.totale_debiti + item.totale_crediti) }}</span>
+                                                    <span v-else class="text-blue-200">Residuo credito: {{ euro(Math.abs(item.totale_debiti + item.totale_crediti)) }}</span>
                                                 </div>
                                             </div>
 
@@ -765,77 +1020,48 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
     </div>
 
-    <Dialog :open="isEmissionModalOpen" @update:open="isEmissionModalOpen = $event">
-        <DialogContent class="sm:max-w-[425px]">
-            <DialogHeader>
-                <DialogTitle>Conferma Emissione</DialogTitle>
-                <DialogDescription>
-                    Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>. 
-                </DialogDescription>
-            </DialogHeader>
-            <div class="grid gap-4 py-4">
-                <div class="grid gap-2">
-                    <Label>Data Registrazione</Label>
-                    <Input type="date" v-model="formEmissione.data_emissione" />
-                </div>
+    <ConfirmDialog 
+        v-model="isEmissionModalOpen"
+        title="Conferma emissione"
+        confirm-text="Emetti ora"
+        variant="default"
+        :loading="formEmissione.processing"
+        @confirm="submitEmissione"
+    >
+        <div class="grid gap-4 py-4">
+            <DialogDescription>
+                Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>.
+            </DialogDescription>
+            <div class="grid gap-2">
+                <Label>Data registrazione</Label>
+                <Input type="date" v-model="formEmissione.data_emissione" />
             </div>
-            <DialogFooter>
-                <Button variant="outline" @click="isEmissionModalOpen = false">Annulla</Button>
-                <Button @click="submitEmissione" :disabled="formEmissione.processing" class="bg-emerald-600 hover:bg-emerald-700">Emetti Ora</Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
+        </div>
+    </ConfirmDialog>
 
-    <AlertDialog :open="isAlertOpen" @update:open="isAlertOpen = $event">
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Stai per annullare l'emissione contabile di questa rata. 
-                    Questa azione cancellerà la scrittura contabile associata.
-                    <br><br>
-                    <strong>Nota:</strong> Se sono già presenti incassi, l'operazione verrà bloccata.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel @click="isAlertOpen = false">Indietro</AlertDialogCancel>
-                <AlertDialogAction @click="executeAnnullamento" class="bg-red-600 hover:bg-red-700">
-                    Sì, Annulla Emissione
-                </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
-
-    <AlertDialog :open="isRecalculateAlertOpen" @update:open="isRecalculateAlertOpen = $event">
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>Confermi il ricalcolo?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Stai per rigenerare l'intero piano rate. Tutte le rate non emesse verranno cancellate e ricreate.
-                    <br><br>
-                    Questa operazione è irreversibile.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel @click="isRecalculateAlertOpen = false">Annulla</AlertDialogCancel>
-                <AlertDialogAction @click="executeRecalculate" class="bg-amber-600 hover:bg-amber-700">
-                    Procedi al Ricalcolo
-                </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog 
+        v-model="isAlertOpen"
+        title="Sei assolutamente sicuro?"
+        confirm-text="Sì, annulla emissione"
+        cancel-text="Indietro"
+        variant="destructive"
+        @confirm="executeAnnullamento"
+    >
+        Stai per annullare l'emissione contabile di questa rata. 
+        Questa azione cancellerà la scrittura contabile associata.
+        <br><br>
+        <strong>Nota:</strong> Se sono già presenti incassi, l'operazione verrà bloccata.
+    </ConfirmDialog>
 
     <Dialog :open="feedbackDialog.open" @update:open="feedbackDialog.open = $event">
         <DialogContent class="sm:max-w-[400px]">
             <div class="flex flex-col items-center justify-center text-center pt-4">
-                
                 <div v-if="!feedbackDialog.isError" class="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
                     <CheckCircle2 class="h-8 w-8 text-emerald-600" />
                 </div>
                 <div v-else class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
                     <XCircle class="h-8 w-8 text-red-600" />
                 </div>
-
                 <DialogHeader>
                     <DialogTitle class="text-center w-full block" :class="feedbackDialog.isError ? 'text-red-700' : 'text-emerald-700'">
                         {{ feedbackDialog.title }}
@@ -845,45 +1071,122 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                     </DialogDescription>
                 </DialogHeader>
             </div>
-
             <DialogFooter class="sm:justify-center mt-4">
-                <Button 
-                    type="button" 
-                    class="w-full sm:w-auto min-w-[120px]" 
+                <Button type="button" class="w-full sm:w-auto min-w-[120px]" 
                     :class="feedbackDialog.isError ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
-                    @click="feedbackDialog.open = false"
-                >
+                    @click="feedbackDialog.open = false">
                     {{ feedbackDialog.isError ? 'Chiudi' : 'Ottimo, prosegui' }}
                 </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
 
-    <AlertDialog :open="isMigrationDialogOpen">
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <div class="flex items-center gap-3 mb-2 text-amber-600">
-                    <AlertTriangle class="h-6 w-6" />
-                    <AlertDialogTitle class="text-lg">Aggiornamento Necessario</AlertDialogTitle>
+    <ConfirmDialog 
+        v-model="isMigrationDialogOpen"
+        title="Aggiornamento necessario"
+        confirm-text="Aggiorna piano rate ora"
+        variant="default"
+        @confirm="executeMigration"
+    >
+        <div class="flex flex-col gap-3 text-base text-gray-700">
+            <div class="flex items-center gap-2 text-amber-600 font-bold">
+                <AlertTriangle class="h-5 w-5" /> Attenzione
+            </div>
+            <p>
+                Abbiamo rilevato che questo Piano Rate è stato generato con una versione precedente.
+                Per garantire la <strong>tracciabilità contabile</strong> e abilitare l'emissione, è necessario rigenerare i calcoli.
+            </p>
+            <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block">
+                Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.
+            </span>
+        </div>
+    </ConfirmDialog>
+    
+    <ConfirmDialog 
+        v-model="isRecalculateAlertOpen"
+        title="Manutenzione piano rate"
+        :confirm-text="(selectedOrphanIds.length > 0) ? `Sincronizza (${selectedOrphanIds.length}) e ricalcola` : 'Ricalcola (Senza aggiunte)'"
+        :variant="(selectedOrphanIds.length > 0) ? 'warning' : 'default'"
+        @confirm="executeRecalculate"
+    >
+        <div v-if="(copertura?.scoperto_count ?? 0) > 0" class="space-y-4">
+            <div class="bg-amber-50 p-3 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                <p class="font-bold flex items-center gap-2">
+                    <AlertTriangle class="w-4 h-4" /> 
+                    Attenzione: Voci scoperte rilevate
+                </p>
+                <p class="mt-1 mb-2">Seleziona le voci da includere in questo piano:</p>
+                
+                <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    <div v-for="o in copertura?.orfani" :key="o.id" class="flex items-start space-x-2">
+                        <Checkbox 
+                            :id="`orphan-${o.id}`" 
+                            v-model="orphanCheckboxes[o.id]"
+                        />
+                        <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
+                            {{ o.nome }} <span class="font-mono text-amber-700">({{ euro(o.importo) }})</span>
+                        </label>
+                    </div>
                 </div>
-                <AlertDialogDescription class="text-base text-gray-700">
-                    Abbiamo rilevato che questo Piano Rate è stato generato con una versione precedente del software.
-                    <br><br>
-                    Per garantire la <strong>tracciabilità contabile</strong> e abilitare le nuove funzioni di emissione, è necessario rigenerare i calcoli.
-                    <br><br>
-                    <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block">
-                        Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.
-                    </span>
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogAction @click="executeMigration" class="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
-                    <RotateCw class="w-4 h-4 mr-2" />
-                    Aggiorna Piano Rate Ora
-                </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
+            </div>
+            <p class="text-[11px] text-slate-500 italic">
+                Se queste voci appartengono a un altro piano (es. Piano Scale), deseleziona la casella sopra.
+            </p>
+        </div>
+        <div v-else>
+            Il piano verrà ricalcolato in base ai millesimi attuali. Le rate non emesse saranno rigenerate.
+        </div>
+    </ConfirmDialog>
+
+    <ConfirmDialog 
+        v-model="isDeleteItemModalOpen"
+        title="Rimuovere voce dal piano?"
+        confirm-text="Sì, rimuovi e ricalcola"
+        variant="destructive"
+        @confirm="executeDetachItem"
+    >
+        <div v-if="itemToDelete?.is_parent" class="bg-amber-50 p-3 rounded-md border border-amber-200 text-amber-800 mb-3 mt-2">
+            <p class="font-bold flex items-center gap-2 mb-1 text-xs uppercase">
+                <AlertTriangle class="w-3 h-3" /> Attenzione: voce raggruppata
+            </p>
+            <p class="text-xs">
+                Stai rimuovendo il gruppo <strong>{{ itemToDelete.nome }}</strong>.<br>
+                Questa azione <strong>eliminerà anche tutti i sottoconti</strong> collegati.
+            </p>
+        </div>
+
+        <div v-else class="text-sm text-gray-700">
+            Stai per eliminare la voce di spesa:
+            <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center">
+                <span>{{ itemToDelete?.nome }}</span>
+                <span class="font-bold text-slate-900">{{ euro(itemToDelete?.importo) }}</span>
+            </div>
+        </div>
+
+        <div class="mt-4 space-y-3">
+            <div class="flex items-start gap-2 text-xs text-slate-600">
+                <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>La voce tornerà tra gli "Orfani" e potrà essere riaggiunta in futuro.</span>
+            </div>
+            <div class="flex items-start gap-2 text-xs text-slate-600">
+                <PieChart class="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Il <strong>totale del piano diminuirà</strong> dell'importo indicato.</span>
+            </div>
+            <div class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100">
+                <RotateCw class="w-4 h-4 shrink-0 mt-0.5" />
+                <span><strong>Importante:</strong> Tutte le rate dei condomini verranno ricalcolate immediatamente.</span>
+            </div>
+        </div>
+    </ConfirmDialog>
+
+    <ModalSpostaSpesa 
+        v-model:show="isSpostaSpesaOpen"
+        :piano-rate-id="props.pianoRate.id"
+        :condominio-id="props.condominio.id"
+        :sources="props.sources"
+        :destinations="props.destinations"
+        @success="showFeedback('Budget Spostato', 'Operazione completata con successo. Il residuo è stato aggiornato.', false)"
+    />
 
   </GestionaleLayout>
 </template>

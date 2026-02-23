@@ -86,7 +86,7 @@ const getCondominioName = (evento: Evento) => {
               </span>
               
               <span v-if="evento.start_time" class="flex items-center gap-1 whitespace-nowrap ml-1 shrink-0"> 
-                • <CalendarDays class="w-3 h-3" /> creato il {{ new Date(evento.start_time).toLocaleDateString() }}
+                • <CalendarDays class="w-3 h-3" /> inizia il {{ new Date(evento.start_time).toLocaleDateString() }}
               </span>
             </div>
 

@@ -8,6 +8,8 @@ use App\Models\Gestione;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Database\Factories\Gestionale\PianoRateFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PianoRate extends Model
 {
@@ -62,15 +64,31 @@ class PianoRate extends Model
     }
 
     /**
+     * Relazione con lo storico dei movimenti di budget.
+     * Necessaria per il modulo "Sposta Spesa" e Audit Log.
+     */
+    public function budgetMovements(): HasMany
+    {
+        return $this->hasMany(BudgetMovement::class);
+    }
+
+    /**
      * I capitoli di spesa inclusi in questo piano rate.
-     * Se la collezione è vuota, si intende che include TUTTI i capitoli della gestione.
+     * CRUCIALE: withPivot carica i campi 'importo' e 'note' dalla tabella di collegamento.
+     * Senza questo, il sistema ignora gli importi parziali e usa il totale del conto.
      */
     public function capitoli(): BelongsToMany
     {
         return $this->belongsToMany(Conto::class, 'piano_rate_capitoli', 'piano_rate_id', 'conto_id')
+                    ->withPivot(['importo', 'note']) // <--- IL FIX FONDAMENTALE
                     ->withTimestamps();
     }
 
-    
+    /**
+     * Collega esplicitamente la Factory corretta.
+     */
+    protected static function newFactory()
+    {
+        return PianoRateFactory::new();
+    }
 }
-

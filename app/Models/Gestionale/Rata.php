@@ -3,13 +3,17 @@
 namespace App\Models\Gestionale;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\Conto;
+use Database\Factories\Gestionale\RataFactory;
 
 class Rata extends Model
 {
+    use HasFactory;
+
     protected $table = 'rate';
 
     protected $fillable = [
@@ -103,5 +107,10 @@ class Rata extends Model
     public function getTotaleRataAttribute(): float
     {
         return $this->importo_totale / 100;
+    }
+
+    protected static function newFactory()
+    {
+        return RataFactory::new(); // 4. Collega esplicitamente
     }
 }

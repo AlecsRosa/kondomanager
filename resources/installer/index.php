@@ -1,13 +1,13 @@
 <?php
 /**
- * KondoManager Auto-Update Engine - v13.1 Bridge-Only
- * * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
+ * KondoManager Auto-Update Engine - v13.2 Bridge (Proxy Aware)
+ * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
  * Funziona SOLO in modalità aggiornamento automatico via Laravel bridge
- * * Posizione: resources/installer/index.php
+ * Posizione: resources/installer/index.php
  * Attivazione: Copiato in root da UpdateService quando necessario
- * * @version 13.0.0
+ * @version 13.2.0
  * @author KondoManager Team
- * @date 31 Gennaio 2026
+ * @date 11 Febbraio 2026
  */
 
 // ============================================================================
@@ -118,7 +118,7 @@ define('BACKUP_DIR', __DIR__ . '/_km_safe_zone');
 
 $bridgeToken = $bridge['security']['token'] ?? null;
 
-logTech("=== AUTO-UPDATE ENGINE v13.0 ===");
+logTech("=== AUTO-UPDATE ENGINE v13.2 ===");
 logTech("Target version: " . APP_VERSION);
 logTech("Package URL: " . PACKAGE_URL);
 logTech("Package hash: " . substr(PACKAGE_HASH, 0, 16) . '...');
@@ -591,6 +591,51 @@ try {
     if (file_exists(BACKUP_DIR . '/.env')) {
         @copy(BACKUP_DIR . '/.env', '.env');
         logTech("Restored: .env");
+
+        // ------------------------------------------------------------------
+        // SMART PATCH v1.9: INIEZIONE AUTOMATICA PROXY
+        // ------------------------------------------------------------------
+        // Poiché stiamo aggiornando da v1.8, il .env non ha TRUSTED_PROXIES.
+        // Dobbiamo rilevarlo e aggiungerlo se necessario.
+        
+        $envContent = file_get_contents('.env');
+        
+        // Verifica se la variabile manca (evita duplicati)
+        if (strpos($envContent, 'TRUSTED_PROXIES') === false) {
+            
+            // 1. Rilevamento Nome (Altervista, ecc.)
+            $host = $_SERVER['HTTP_HOST'] ?? '';
+            $isRestricted = (@disk_free_space(__DIR__) === false) || 
+                            (strpos($host, 'altervista') !== false) ||
+                            (strpos($host, '.av') !== false) ||
+                            (strpos($host, 'infinityfree') !== false) ||
+                            (strpos($host, 'rf.gd') !== false) || 
+                            (strpos($host, 'netsons') !== false);
+
+            // 2. Rilevamento Tecnico (Proxy Headers)
+            $isBehindProxy = !empty($_SERVER['HTTP_X_FORWARDED_FOR']) || 
+                             !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) || 
+                             !empty($_SERVER['HTTP_CF_CONNECTING_IP']);
+
+            if ($isRestricted || $isBehindProxy) {
+                logTech("Upgrade Patch: Proxy environment detected ($host) - Injecting TRUSTED_PROXIES=*");
+                
+                $patch  = "\n\n# --- AUTO-CONFIGURED BY V1.9 UPGRADER ---\n";
+                $patch .= "# Fix per HTTPS e Cron Job su Hosting Condivisi/Proxy\n";
+                $patch .= "TRUSTED_PROXIES=*\n";
+                
+                // Opzionale: Fix DB se mancano le definizioni moderne
+                if (strpos($envContent, 'DB_ENGINE') === false) {
+                    $patch .= "DB_CHARSET=utf8\nDB_COLLATION=utf8_unicode_ci\nDB_ENGINE=\"InnoDB ROW_FORMAT=DYNAMIC\"\n";
+                }
+
+                file_put_contents('.env', $patch, FILE_APPEND);
+            } else {
+                logTech("Upgrade Patch: Standard environment - No changes needed to .env");
+            }
+        } else {
+            logTech("Upgrade Patch: TRUSTED_PROXIES already defined - Skipping patch"); 
+        }
     }
     
     safeRmdir(BACKUP_DIR);

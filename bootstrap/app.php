@@ -40,6 +40,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'auto.update' => \App\Http\Middleware\EnsureAutoUpdateEnabled::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'system/run-scheduler', 
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         

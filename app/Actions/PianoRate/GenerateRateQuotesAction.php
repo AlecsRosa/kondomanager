@@ -23,11 +23,14 @@ class GenerateRateQuotesAction
         $importoTotaleGenerato = 0;
         
         $now = now(); 
+        
+        // Copia locale dei saldi per gestirli (consumarli) man mano che li applichiamo
+        $saldiResidui = $saldi;
 
         foreach ($dateRate as $index => $dataScadenza) {
             $numeroRata = $index + 1;
 
-            // 1. Creazione Rata (Testata)
+            // 1. Creazione Rata
             $rata = Rata::create([
                 'piano_rate_id'  => $pianoRate->id,
                 'numero_rata'    => $numeroRata,
@@ -46,13 +49,28 @@ class GenerateRateQuotesAction
                 foreach ($immobili as $iid => $totaleImmobile) {
                     if ($totaleImmobile == 0) continue;
 
-                    // Calcolo Avanzato + Snapshot
+                    // FIX CRITICO: Accesso corretto all'array dei saldi
+                    // GenerateSaldiAction restituisce [anagrafica_id => totale]
+                    // NON [anagrafica_id][immobile_id]
+                    
+                    $saldoDaApplicare = 0;
+                    
+                    // Applichiamo il saldo solo se esiste per questa anagrafica
+                    if (isset($saldiResidui[$aid])) {
+                        // Per evitare di applicare lo stesso saldo più volte (se ha più immobili),
+                        // lo applichiamo tutto sul primo immobile che processiamo per questa anagrafica e poi lo azzeriamo.
+                        // (Logica semplificata V1.9, si può raffinare per spalmarlo sugli immobili)
+                        $saldoDaApplicare = $saldiResidui[$aid];
+                        $saldiResidui[$aid] = 0; // Consumato
+                    }
+
+                    // Calcolo Avanzato
                     $risultatoCalcolo = $this->calcolaImportoRataAvanzato(
                         $totaleImmobile, 
                         $numeroRate,
                         $numeroRata,
                         $pianoRate->metodo_distribuzione,
-                        $saldi[$aid][$iid] ?? 0
+                        $saldoDaApplicare // Passiamo il valore corretto
                     );
 
                     $amount = $risultatoCalcolo['importo_finale'];
@@ -67,7 +85,6 @@ class GenerateRateQuotesAction
                         'importo'        => $amount,
                         'importo_pagato' => 0,
                         'stato'          => $statoQuota,
-                        // Salvataggio JSON Snapshot
                         'regole_calcolo' => json_encode($snapshot),
                         'data_scadenza'  => $dataScadenza instanceof Carbon ? $dataScadenza->format('Y-m-d') : $dataScadenza,
                         'created_at'     => $now, 
@@ -79,6 +96,10 @@ class GenerateRateQuotesAction
                 }
             }
 
+            // Se ci sono saldi "orfani" (cioè debiti pregressi di persone che NON hanno spese quest'anno),
+            // dovremmo idealmente creare rate solo per il saldo. 
+            // Per ora in V1.9 saltiamo questo caso edge (richiederebbe loop separato sui saldiResidui).
+
             // 3. Inserimento Massivo
             if (!empty($quotesToInsert)) {
                 foreach (array_chunk($quotesToInsert, 500) as $chunk) {
@@ -89,6 +110,13 @@ class GenerateRateQuotesAction
             $rata->update(['importo_totale' => $importoTotaleRata]);
             $importoTotaleGenerato += $importoTotaleRata;
             $rateCreate++;
+            
+            // Reset saldi residui per le prossime rate? 
+            // NO. I saldi si applicano una volta sola (Gestiti da 'metodo_distribuzione' dentro calcolaImportoRataAvanzato)
+            // MA attenzione: la logica 'tutte_rate' in calcolaImportoRataAvanzato presume di ricevere il saldo TOTALE ad ogni chiamata
+            // e calcola la quota parte.
+            // QUINDI: Dobbiamo ripristinare $saldiResidui per la prossima rata del ciclo principale
+            $saldiResidui = $saldi; 
         }
 
         return [
@@ -118,10 +146,12 @@ class GenerateRateQuotesAction
         $quotaSaldoApplicata = 0;
         if ($saldo !== 0) {
             if ($metodoDistribuzione === 'prima_rata') {
+                // Il saldo va tutto sulla prima rata
                 if ($numeroRata === 1) {
                     $quotaSaldoApplicata = $saldo;
                 }
             } elseif ($metodoDistribuzione === 'tutte_rate') {
+                // Il saldo viene spalmato
                 $segnoSaldo = $saldo < 0 ? -1 : 1;
                 $absSaldo   = abs($saldo);
                 $baseSaldo = intdiv($absSaldo, $numeroRate);
@@ -137,24 +167,18 @@ class GenerateRateQuotesAction
         // --- 3. Costruzione Snapshot ---
         $snapshot = [
             'origine' => OrigineQuota::CALCOLO_AUTOMATICO->value,
-            
-            // Dati Finanziari (per Tooltip)
             'importi' => [
                 'quota_pura_gestione' => $quotaPuraRata,
                 'saldo_usato'         => $quotaSaldoApplicata,
                 'totale_calcolato'    => $importoFinale
             ],
-            
-            // Contesto
             'parametri' => [
                 'metodo_distribuzione'  => $metodoDistribuzione,
                 'numero_rata'           => $numeroRata,
                 'totale_rate_piano'     => $numeroRate
             ],
-            
-            // Audit (FIX 2: Uso config e Facade Auth)
             'audit' => [
-                'versione_calcolo'  => config('app.version'), 
+                'versione_calcolo'  => config('app.version', '1.9.0'), 
                 'generato_il'       => now()->toIso8601String(),
                 'generato_da'       => Auth::check() ? 'user_'.Auth::id() : 'sistema',
             ]

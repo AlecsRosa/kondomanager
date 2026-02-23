@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.8.0'),
+    'version' => env('APP_VERSION', '1.9.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -147,5 +147,18 @@ return [
     |
     */
     'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trusted Proxies (Sicurezza Rete)
+    |--------------------------------------------------------------------------
+    |
+    | Definisce gli IP dei proxy di cui ci fidiamo.
+    | - '*' : Fidati di tutti (Cloudflare, AWS, Hosting Condiviso)
+    | - null : Non fidarti di nessuno default per sicurezza (VPS Nudo - Default Sicuro)
+    | - '10.0.0.1,192.168.1.1' : Lista specifica
+    |
+    */
+    'trusted_proxies' => env('TRUSTED_PROXIES', null), 
 
 ];

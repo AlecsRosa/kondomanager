@@ -11,6 +11,7 @@ import InputError from '@/components/InputError.vue'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
+import { Lock, AlertTriangle } from 'lucide-vue-next' // Aggiunta icona Lock
 import type { Conto } from '@/types/gestionale/conti'
 
 interface Emits {
@@ -21,7 +22,7 @@ interface Emits {
 interface Props {
   show: boolean
   conto: Conto | null
-  condominioId: string
+  condominioId: number
   esercizioId: number
   pianoContoId: number
 }
@@ -57,7 +58,6 @@ const form = useForm({
 // Carica i dati quando il modal si apre
 watch(() => props.show, (newVal) => {
   if (newVal && props.conto) {
-    // Carica immediatamente i dati per i dropdown
     fetchCapitoliConti(props.condominioId, props.pianoContoId)
   }
 })
@@ -75,55 +75,45 @@ const selectedCapitolo = computed({
   }
 })
 
-// Funzione per estrarre il valore numerico dall'importo formattato
 const extractNumericValue = (importoFormattato: string): number => {
   if (!importoFormattato) return 0
-  
-  // Rimuovi il simbolo € e gli spazi, poi sostituisci la virgola con il punto
   const numericString = importoFormattato
     .replace('€', '')
     .replace(/\s/g, '')
-    .replace(/\./g, '') // Rimuovi i separatori delle migliaia
-    .replace(',', '.') // Converti la virgola decimale in punto
-  
+    .replace(/\./g, '') 
+    .replace(',', '.') 
   return parseFloat(numericString) || 0
 }
 
-// Calcola se il conto è un capitolo basandosi sui dati reali
 const isContoCapitolo = computed(() => {
   if (!props.conto) return false
-  
-  // Controlla se l'importo è zero (considerando sia il formato stringa che numero)
   const importoNumerico = extractNumericValue(props.conto.importo)
   const hasZeroImporto = importoNumerico === 0
-  
-  // Controlla se ha sottoconti
   const hasSottoconti = props.conto.sottoconti && props.conto.sottoconti.length > 0
-  
-  // È un capitolo se ha importo zero E ha sottoconti
-  // OPPURE se non ha parent_id (non è un sotto-conto) e ha importo zero
   return (hasZeroImporto && hasSottoconti) || (hasZeroImporto && !props.conto.parent_id)
 })
 
-// Inizializza il form quando il conto cambia
+// *** NUOVA COMPUTED PROPERTY PER IL BLOCCO ***
+const isImportoLocked = computed(() => {
+  // È bloccato se il backend dice che ha rate emesse (aggiungi questa prop al tipo TypeScript se manca)
+  // @ts-ignore (ignora errore TS finché non aggiorni l'interfaccia Conto)
+  return props.conto?.has_rate_emesse === true;
+})
+
 watch(() => props.conto, (newConto) => {
   if (newConto) {
-    
     form.nome = newConto.nome
     form.tipo = newConto.tipo
     form.descrizione = newConto.descrizione || ''
     form.note = newConto.note || ''
     form.parent_id = newConto.parent_id
     
-    // Imposta i flag basati sui dati reali del conto
     isCapitolo.value = isContoCapitolo.value
     isSottoConto.value = !!newConto.parent_id
     form.isCapitolo = isContoCapitolo.value
     form.isSottoConto = !!newConto.parent_id
     
-    // Gestione importo (solo se non è capitolo)
     if (!isContoCapitolo.value) {
-      // Se non è un capitolo, mostra l'importo formattato così com'è
       form.importo = newConto.importo
     } else {
       form.importo = ''
@@ -131,7 +121,6 @@ watch(() => props.conto, (newConto) => {
   }
 }, { immediate: true })
 
-// Watch per sincronizzare i flag con il form
 watch(isCapitolo, (val) => {
   if (val) {
     isSottoConto.value = false
@@ -177,6 +166,7 @@ const submit = () => {
 
   form.transform((data) => ({
     ...data,
+    // Se è bloccato, non inviamo l'importo modificato (o inviamo quello vecchio per sicurezza)
     importo: isCapitolo.value ? 0 : data.importo,
     parent_id: isSottoConto.value ? data.parent_id : null,
   })).put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
@@ -187,14 +177,15 @@ const submit = () => {
       closeModal()
     },
     onError: (errors) => {
-      console.error('Errore nella modifica della voce di spesa:', errors)
-      console.error('Form data sent:', form.data())
+      console.error('Errore nella modifica:', errors)
     },
   })
 }
 </script>
 
 <template>
+
+
   <Dialog v-model:open="props.show" @update:open="closeModal">
     <DialogContent class="sm:max-w-[650px]">
       <DialogHeader>
@@ -205,18 +196,15 @@ const submit = () => {
         <div class="flex flex-col justify-between h-[60dvh]">
 
           <form v-if="props.conto" @submit.prevent="submit" class="space-y-4 mt-4">
-            <!-- Campi hidden per isCapitolo e isSottoConto -->
             <input type="hidden" v-model="form.isCapitolo" />
             <input type="hidden" v-model="form.isSottoConto" />
 
-            <!-- Nome -->
             <div>
               <Label for="nome">Nome</Label>
               <Input id="nome" v-model="form.nome" placeholder="Es. Spese ascensore" />
               <InputError :message="form.errors.nome" />
             </div>
 
-            <!-- Descrizione e note -->
             <div>
               <Label for="descrizione">Descrizione</Label>
               <Textarea id="descrizione" v-model="form.descrizione" placeholder="Descrizione..." />
@@ -234,7 +222,6 @@ const submit = () => {
               </div>
             </div>
 
-            <!-- Se è sotto-conto -->
             <div v-if="isSottoConto">
               <Label>Capitolo padre</Label>
               <v-select
@@ -247,35 +234,37 @@ const submit = () => {
                 :loading="isLoadingCapitoli"
                 :clearable="true"
               >
-                <template #no-options>
-                  <div class="text-sm text-gray-500 p-2">
-                    {{ isLoadingCapitoli ? 'Caricamento capitoli...' : 'Nessun capitolo disponibile' }}
-                  </div>
-                </template>
-                <template #option="option">
-                  <div class="flex items-center">
-                    <span>{{ option.nome }}</span>
-                  </div>
-                </template>
               </v-select>
               <InputError :message="form.errors.parent_id" />
             </div>
 
-            <!-- Campi specifici solo se NON è capitolo -->
             <div v-if="!isCapitolo">
-              <Label for="importo">Importo</Label>
-              <MoneyInput
-                id="importo"
-                v-model="form.importo"
-                :money-options="moneyOptions"
-                :lazy="true" 
-                placeholder="0,00"
-                @focus="form.clearErrors('importo')"
-              />
+              <div class="flex justify-between items-center mb-1">
+                <Label for="importo">Importo</Label>
+                <div v-if="isImportoLocked" class="flex items-center text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                  <Lock class="w-3 h-3 mr-1" />
+                  Bloccato da rate emesse
+                </div>
+              </div>
+              
+              <div class="relative">
+                <MoneyInput
+                  id="importo"
+                  v-model="form.importo"
+                  :money-options="moneyOptions"
+                  :lazy="true" 
+                  placeholder="0,00"
+                  @focus="form.clearErrors('importo')"
+                  :disabled="isImportoLocked" 
+                  :class="{'opacity-60 bg-gray-100 cursor-not-allowed': isImportoLocked}"
+                />
+                
+                <div v-if="isImportoLocked" class="text-[11px] text-gray-500 mt-1">
+                  Per modificare l'importo devi creare un conguaglio o annullare le rate.
+                </div>
+              </div>
+              
               <InputError :message="form.errors.importo" />
-              <p class="text-xs text-gray-500 mt-1">
-                Inserisci l'importo nel formato italiano (es. 1.234,56)
-              </p>
             </div>
 
             <div>

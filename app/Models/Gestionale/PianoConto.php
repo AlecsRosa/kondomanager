@@ -3,6 +3,7 @@
 namespace App\Models\Gestionale;
 
 use App\Models\Gestione;
+use Database\Factories\Gestionale\PianoContoFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -29,6 +30,12 @@ class PianoConto extends Model
     public function conti()
     {
         return $this->hasMany(Conto::class, 'piano_conto_id');
+    }
+
+    // Aggiungi questo metodo
+    protected static function newFactory()
+    {
+        return PianoContoFactory::new();
     }
     
 }

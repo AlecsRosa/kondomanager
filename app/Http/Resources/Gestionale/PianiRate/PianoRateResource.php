@@ -8,40 +8,99 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class PianoRateResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
-        // 1. Calcolo Totale Piano (Somma delle rate collegate)
-        // Se la relazione 'rate' è caricata, sommiamo 'importo_totale' (che è in centesimi) e dividiamo.
-        $totalePiano = 0;
-        if ($this->relationLoaded('rate')) {
-            $totalePiano = $this->rate->sum('importo_totale') / 100;
+        // Carichiamo la relazione se non presente
+        if (!$this->relationLoaded('capitoli')) {
+            $this->load(['capitoli' => function($q) {
+                // Fondamentale: carichiamo i dati extra della pivot
+                $q->withPivot(['importo', 'note']);
+            }]);
         }
 
-        // 2. Gestione Stato (Enum o Stringa)
+        // CALCOLO TOTALE REALE (FIX 200€ vs 823€)
+        // Se nella pivot c'è un importo (override), usiamo quello.
+        // Altrimenti usiamo l'importo standard del conto.
+        $totaleReale = $this->capitoli->sum(function ($capitolo) {
+            return !is_null($capitolo->pivot->importo) 
+                ? $capitolo->pivot->importo 
+                : $capitolo->importo;
+        });
+
+        // Gestione Stato
         $statoValue = $this->stato;
         if ($this->stato instanceof \UnitEnum) {
             $statoValue = $this->stato->value;
         }
 
         return [
-            'id'           => $this->id,
-            'nome'         => $this->nome,
-            'descrizione'  => $this->descrizione,
-            'numero_rate'  => $this->numero_rate,
+            'id'              => $this->id,
+            'nome'            => $this->nome,
+            'descrizione'     => $this->descrizione,
+            'numero_rate'     => $this->numero_rate,
+            'stato'           => $statoValue,
+            'giorno_scadenza' => $this->giorno_scadenza,
+            'metodo_distribuzione' => $this->metodo_distribuzione,
+            'data_inizio'     => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
             
-            // Nuovi campi per l'emissione
-            'totale_piano' => $totalePiano,
-            'stato'        => $statoValue,
+            // FIX: Usiamo il totale calcolato dalla pivot
+            'totale_capitoli' => (int) $totaleReale,
             
-            // Fallback per data_inizio se null (usa created_at o oggi)
-            'data_inizio'  => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
+            // Totale rate generate (controllo incrociato)
+            'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
             
-            'gestione'     => new GestioneResource($this->whenLoaded('gestione')),
+            'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
+
+            'budget_movements' => $this->whenLoaded('budgetMovements'),
+
+            'capitoli' => $this->whenLoaded('capitoli', function() {
+                return $this->capitoli->map(function ($c) {
+                    $isParent = $c->sottoconti()->exists();
+                    
+                    $importoEffettivo = !is_null($c->pivot->importo) 
+                        ? $c->pivot->importo 
+                        : $c->importo;
+
+                    // FIX: Se è un padre, l'importo originale è la somma dei sottoconti
+                    // Se è una voce singola, è il suo importo standard
+                    $importoOriginale = $isParent 
+                        ? $c->sottoconti->sum('importo') 
+                        : $c->importo;
+
+                    $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
+
+                    return [
+                        'id'                => $c->id,
+                        'nome'              => $c->nome,
+                        'importo'           => (int) $importoEffettivo,
+                        'importo_originale' => (int) $importoOriginale,
+                        'is_frazionato'     => $isFrazionato,
+                        'note'              => $c->pivot->note,
+                        'is_parent'         => $isParent,
+                        'figli_names'       => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                    ];
+                });
+            }),
+            
+          /*   'capitoli'        => $this->whenLoaded('capitoli', function() {
+                return $this->capitoli->map(function ($c) {
+                    $isParent = $c->sottoconti()->exists();
+                    
+                    // Qui decidiamo quale importo mostrare nel dettaglio
+                    $importoEffettivo = !is_null($c->pivot->importo) 
+                        ? $c->pivot->importo 
+                        : $c->importo;
+
+                    return [
+                        'id'          => $c->id,
+                        'nome'        => $c->nome,
+                        'importo'     => (int) $importoEffettivo, // Importo reale (Override o Standard)
+                        'note'        => $c->pivot->note,
+                        'is_parent'   => $isParent,
+                        'figli_names' => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                    ];
+                });
+            }), */
         ];
     }
 }

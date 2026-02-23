@@ -3,7 +3,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -36,6 +36,24 @@ const apps = computed(() => [
     href: "/utenti",
   },
   {
+    name: 'impostazioni.dialogs.mail_settings_title', 
+    logo: Mail,
+    desc: 'impostazioni.dialogs.mail_settings_description',
+    href: "/impostazioni/mail", 
+  },
+  {
+    name: 'impostazioni.dialogs.cron_settings_title', 
+    logo: Timer,
+    desc: 'impostazioni.dialogs.cron_settings_description',
+    href: "/impostazioni/cron", 
+  },
+  {
+    name: 'impostazioni.dialogs.logs_settings_title',
+    logo: Activity,
+    desc: 'impostazioni.dialogs.logs_settings_description',
+    href: "/logs", 
+  },
+  {
     name: 'impostazioni.dialogs.backups_settings_title',
     logo: DatabaseBackup,
     desc: 'impostazioni.dialogs.backups_settings_description',
@@ -49,7 +67,7 @@ const apps = computed(() => [
           ? trans('impostazioni.dialogs.updates_desc_available', { version: newVersion.value })
           : trans('impostazioni.dialogs.updates_desc_latest'),
       href: '/system/upgrade',
-      highlight: updateAvailable.value, // Flag attivato se c'è update
+      highlight: updateAvailable.value, 
   }
 ])
 
@@ -60,9 +78,9 @@ const normalize = (value: string) => value.toLowerCase().normalize('NFD').replac
 const filteredApps = computed(() => {
   const term = normalize(searchTerm.value)
 
-  return apps.value.filter(app => { // Nota: apps.value perché ora è computed
+  return apps.value.filter(app => {
     const name = normalize(trans(app.name))
-    const desc = app.highlight ? normalize(app.desc) : normalize(trans(app.desc)) // La descrizione update è già tradotta sopra
+    const desc = app.highlight ? normalize(app.desc) : normalize(trans(app.desc)) 
 
     return name.includes(term) || desc.includes(term)
   })
@@ -99,7 +117,7 @@ const filteredApps = computed(() => {
         >
           <ItemMedia variant="icon">
             <div 
-              class="flex h-10 w-10 items-center justify-center rounded-lg"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg" 
               :class="app.highlight ? 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
             >
               <component 
@@ -114,7 +132,7 @@ const filteredApps = computed(() => {
             <ItemTitle>
               {{ trans(app.name) }}
             </ItemTitle>
-            <ItemDescription>
+            <ItemDescription class="text-[13px] leading-tight">
               {{ app.highlight ? app.desc : trans(app.desc) }}
             </ItemDescription>
           </ItemContent>
@@ -124,7 +142,12 @@ const filteredApps = computed(() => {
               as-child 
               :variant="app.highlight ? 'default' : 'outline'" 
               size="sm"
-              :class="{ 'bg-orange-600 hover:bg-orange-700 text-white border-transparent': app.highlight }"
+              :class="[
+                'h-8 text-xs font-semibold transition-colors duration-200 relative z-20',
+                app.highlight 
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white border-transparent' 
+                  : 'hover:bg-slate-900 hover:text-white dark:hover:bg-slate-100 dark:hover:text-slate-900'
+              ]"
             >
               <Link :href="app.href">
                 {{ app.highlight ? trans('impostazioni.label.update_now') : trans('impostazioni.label.manage') }}

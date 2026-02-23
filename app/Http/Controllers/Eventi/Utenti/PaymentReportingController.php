@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Eventi\Utenti;
 
 use App\Http\Controllers\Controller;
 use App\Models\Evento;
-use App\Models\Condominio;
+use App\Models\User; 
 use App\Enums\VisibilityStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache; 
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class PaymentReportingController extends Controller
@@ -21,8 +22,7 @@ class PaymentReportingController extends Controller
 
         $currentStatus = $evento->meta['status'] ?? 'pending';
 
-        // Blocchiamo solo se pagato o GIÀ in verifica (reported).
-        // Se è 'rejected', lasciamo passare per il retry.
+        // Blocchi di sicurezza
         if ($currentStatus === 'paid') return back()->with('error', 'Già pagata.');
         if ($currentStatus === 'reported') return back()->with('info', 'Già segnalato.');
 
@@ -33,7 +33,7 @@ class PaymentReportingController extends Controller
             $meta['status'] = 'reported'; 
             $meta['reported_at'] = now()->toIso8601String();
             
-            // PULIZIA: Se era stato rifiutato, rimuoviamo la motivazione così sparisce il box rosso
+            // PULIZIA: Se era stato rifiutato, rimuoviamo la motivazione
             if (isset($meta['rejection_reason'])) {
                 unset($meta['rejection_reason']);
                 unset($meta['rejected_at']);
@@ -41,17 +41,17 @@ class PaymentReportingController extends Controller
 
             $evento->update(['meta' => $meta]);
 
-            // 2. Prepara dati
+            // 2. Prepara dati per il Task Admin
             $anagrafica = $evento->anagrafiche->first();
             $nomeAnagrafica = $anagrafica ? $anagrafica->nome : 'Condòmino';
             
-            // Importo in Euro (es. 33.29)
             $importoEuro = ($meta['importo_restante'] ?? 0) / 100;
             $importoFormat = number_format($importoEuro, 2, ',', '.');
             
             $condominioId = $evento->condomini->first()?->id;
 
-            // 3. Crea Task Admin (PRIMA creiamo il task, così abbiamo l'ID)
+            // 3. Crea Task Admin
+            // Usiamo 'start_time' => now() così il Middleware lo pesca subito 
             $adminEvent = Evento::create([
                 'title'       => "Verifica Incasso: {$evento->title}",
                 'description' => "Il condòmino {$nomeAnagrafica} ha segnalato di aver pagato {$importoFormat}€.\n" .
@@ -60,7 +60,8 @@ class PaymentReportingController extends Controller
                 'end_time'    => now()->addHour(),
                 'created_by'  => Auth::id(),
                 'category_id' => $evento->category_id,
-                'visibility'  => VisibilityStatus::HIDDEN->value,
+                // HIDDEN ('hidden') è diverso da PRIVATE ('private'), quindi il Middleware lo mostrerà!
+                'visibility'  => VisibilityStatus::HIDDEN->value, 
                 'is_approved' => true,
                 'meta'        => [
                     'type'            => 'verifica_pagamento',
@@ -73,35 +74,45 @@ class PaymentReportingController extends Controller
                     ],
                     'condominio_nome'    => $meta['condominio_nome'] ?? '',
                     'importo_dichiarato' => $meta['importo_restante'] ?? 0,
-                    'action_url'         => null // Lo riempiamo tra un attimo
+                    'action_url'         => null // Lo riempiamo al punto 4
                 ]
             ]);
 
             if ($condominioId) {
                 $adminEvent->condomini()->attach($condominioId);
             }
-            // Opzionale: colleghiamo anche l'anagrafica per il fix del nome "Sconosciuto"
             if ($anagrafica) {
                 $adminEvent->anagrafiche()->attach($anagrafica->id);
             }
 
-            // 4. Genera Link "Registra Incasso" CON ID TASK
+            // 4. Genera Link e aggiorna
             if ($condominioId) {
                 $actionUrl = route('admin.gestionale.movimenti-rate.create', [
-                    'condominio' => $condominioId,
+                    'condominio'            => $condominioId,
                     'prefill_rata_id'       => $meta['context']['rata_id'] ?? null,
                     'prefill_anagrafica_id' => $anagrafica?->id,
                     'prefill_importo'       => $importoEuro,
                     'prefill_descrizione'   => "Saldo rata condominiale (Segnalazione utente)",
-                    // FONDAMENTALE: Passiamo l'ID del task appena creato per chiuderlo dopo
                     'related_task_id'       => $adminEvent->id 
                 ]);
 
-                // Aggiorniamo il task con l'URL corretto
                 $adminMeta = $adminEvent->meta;
                 $adminMeta['action_url'] = $actionUrl;
                 $adminEvent->update(['meta' => $adminMeta]);
             }
+
+            // 5. CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+            // Invece di pulire la cache del condòmino, puliamo quella di chi DEVE VEDERE la notifica.
+            
+            // Opzione A: Se usi Spatie Laravel-Permission (consigliato)
+            // Recupera tutti gli utenti che hanno ruoli amministrativi
+            $admins = User::role(['amministratore', 'collaboratore'])->get();
+            
+            foreach ($admins as $admin) {
+                // Rimuove la cache del conteggio per ogni amministratore trovato
+                Cache::forget('inbox_count_' . $admin->id);
+            }
+
         });
 
         return back()->with('success', 'Segnalazione inviata con successo.');

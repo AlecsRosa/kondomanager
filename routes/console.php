@@ -1,12 +1,6 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
-
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
 
 // ============================================================================
 // 1. MANUTENZIONE DATABASE (Garbage Collector)
@@ -24,11 +18,22 @@ Schedule::command('system:check-updates')
     ->runInBackground();
 
 // ============================================================================
-// 3. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
+// 3. CONTROLLO AGGIORNAMENTI IP CRON-JOB.ORG
 // ============================================================================
-// Si attiva solo se configurato in config/app.php
+// Aggiornamento automatico IP di cron-job.org
+Schedule::command('cronjob:update-ips')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// ============================================================================
+// 4. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
+// ============================================================================
+// Si attiva SOLO se configurato in config/app.php.
+// Fondamentale per switchare tra Supervisor (false) e Hosting Condiviso (true).
 if (config('app.scheduler_queue_worker')) {
-    Schedule::command('queue:work --stop-when-empty --max-time=55')
+    Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3 --backoff=10')
         ->everyMinute()
-        ->withoutOverlapping();
+        ->withoutOverlapping()
+        ->runInBackground();
 }

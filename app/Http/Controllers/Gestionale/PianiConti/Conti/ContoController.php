@@ -20,37 +20,15 @@ class ContoController extends Controller
 {
      use HandleFlashMessages;
 
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        //
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(CreateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
         try {
-
             DB::beginTransaction();
-
             $data = $request->validated();
             $isCapitolo = $data['isCapitolo'];
             $isSottoConto = $data['isSottoConto'];
                 
-            // Prepara i dati per la creazione
-            $contoData = [
+            $nuovoConto = Conto::create([
                 'piano_conto_id' => $pianoConto->id,
                 'parent_id'      => $isSottoConto ? ($data['parent_id'] ?? null) : null,
                 'nome'           => $data['nome'],
@@ -59,249 +37,104 @@ class ContoController extends Controller
                 'importo'        => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']), 
                 'note'           => $data['note'] ?? null,
                 'attivo'         => true,
-            ];
+            ]);
 
-            // Crea il conto
-            $nuovoConto = Conto::create($contoData);
-
-            // Se non è un capitolo, gestisci le ripartizioni millesimali
             if (!$isCapitolo) {
-                
-                // Se è stata selezionata una tabella specifica, usiamo quella
                 if (!empty($data['tabella_millesimale_id'])) {
-                    $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
-                        ->where('condominio_id', $condominio->id)
-                        ->first();
-                    
-                    if (!$tabella) {
-                        throw new \Exception('Tabella millesimale selezionata non trovata');
-                    }
+                    $tabella = Tabella::where('id', $data['tabella_millesimale_id'])->where('condominio_id', $condominio->id)->first();
+                    if (!$tabella) throw new \Exception('Tabella millesimale non trovata');
                 } 
 
                 $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                    'conto_id'     => $nuovoConto->id, 
-                    'tabella_id'   => $tabella->id,
-                    'coefficiente' => 100.00, 
-                    'created_at'   => now(),
-                    'updated_at'   => now(),
+                    'conto_id' => $nuovoConto->id, 'tabella_id' => $tabella->id, 'coefficiente' => 100.00, 'created_at' => now(), 'updated_at' => now(),
                 ]);
 
                 $ripartizioni = [
-                    [
-                        'soggetto' => 'proprietario',
-                        'percentuale' => $data['percentuale_proprietario']
-                    ],
-                    [
-                        'soggetto' => 'inquilino', 
-                        'percentuale' => $data['percentuale_inquilino']
-                    ],
-                    [
-                        'soggetto' => 'usufruttuario',
-                        'percentuale' => $data['percentuale_usufruttuario']
-                    ]
+                    ['soggetto' => 'proprietario', 'percentuale' => $data['percentuale_proprietario']],
+                    ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino']],
+                    ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario']]
                 ];
 
-                // Verifica che la somma delle percentuali sia 100
-                $sommaPercentuali = array_sum(array_column($ripartizioni, 'percentuale'));
-                if ($sommaPercentuali != 100) {
-                    throw new \Exception("La somma delle percentuali deve essere 100%. Attuale: {$sommaPercentuali}%");
-                }
+                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) throw new \Exception("La somma delle percentuali deve essere 100%");
 
-                // Crea le ripartizioni per ogni soggetto
-                foreach ($ripartizioni as $ripartizione) {
-                    if ($ripartizione['percentuale'] > 0) {
+                foreach ($ripartizioni as $rip) {
+                    if ($rip['percentuale'] > 0) {
                         DB::table('conto_tabella_ripartizioni')->insert([
-                            'conto_tabella_millesimale_id' => $contoTabellaId,
-                            'soggetto'                     => $ripartizione['soggetto'],
-                            'percentuale'                  => $ripartizione['percentuale'],
-                            'created_at'                   => now(),
-                            'updated_at'                   => now(),
+                            'conto_tabella_millesimale_id' => $contoTabellaId, 'soggetto' => $rip['soggetto'], 'percentuale' => $rip['percentuale'], 'created_at' => now(), 'updated_at' => now(),
                         ]);
                     }
                 }
             }
-
             DB::commit();
-
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id
-                ])
-                ->with($this->flashSuccess(__('gestionale.success_create_conto')));
-
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])->with($this->flashSuccess(__('gestionale.success_create_conto')));
         } catch (\Exception $e) {
             DB::rollBack();
-            
-            Log::error('Errore durante la creazione della voce di spesa:', [
-                'condominio_id' => $condominio->id,
-                'esercizio_id'  => $esercizio->id,
-                'conto_id'      => $pianoConto->id,
-                'error'         => $e->getMessage(),
-                'trace'         => $e->getTraceAsString()
-            ]);
-
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id
-                ])
-                ->with($this->flashError(__('gestionale.error_create_conto')));
-
+            return back()->withInput()->with($this->flashError($e->getMessage()));
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(UpdateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
         try {
             DB::beginTransaction();
-
             $data = $request->validated();
             $isCapitolo = $data['isCapitolo'];
-            $isSottoConto = $data['isSottoConto'];
-                
-            // Prepara i dati per l'aggiornamento
-            $contoData = [
-                'parent_id'      => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                'nome'           => $data['nome'],
-                'descrizione'    => $data['descrizione'] ?? null,
-                'tipo'           => $data['tipo'],
-                'importo'        => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']), 
-                'note'           => $data['note'] ?? null,
-            ];
+            $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']);
 
-            $conto->update($contoData);
+            if (!$isCapitolo && $nuovoImporto != $conto->importo) {
+                // 1. Blocco per rate approvate/emesse
+                $hasHardLock = $conto->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists() ||
+                               ($conto->parent && $conto->parent->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists());
 
-            DB::commit();
+                if ($hasHardLock) {
+                    return back()->with($this->flashError("Modifica inibita: esistono rate già approvate o emesse."));
+                }
 
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id
-                ])
-                ->with($this->flashSuccess(__('gestionale.success_update_conto')));
+                // 2. Blocco Elastico: non puoi scendere sotto l'impegnato
+                $impegnato = (int) DB::table('piano_rate_capitoli')->where('conto_id', $conto->id)->sum('importo');
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            
-            Log::error('Errore durante l\'aggiornamento della voce di spesa:', [
-                'condominio_id' => $condominio->id,
-                'esercizio_id'  => $esercizio->id,
-                'piano_conto_id' => $pianoConto->id,
-                'conto_id'      => $conto->id,
-                'error'         => $e->getMessage(),
-                'trace'         => $e->getTraceAsString()
+                if ($nuovoImporto < $impegnato) {
+                    $giaPianificato = number_format($impegnato / 100, 2, ',', '.');
+                    return back()->with($this->flashError("L'importo minimo consentito è € $giaPianificato (già impegnato nei piani rate)."));
+                }
+            }
+
+            $conto->update([
+                'parent_id'   => $data['isSottoConto'] ? ($data['parent_id'] ?? null) : null,
+                'nome'        => $data['nome'],
+                'descrizione' => $data['descrizione'] ?? null,
+                'tipo'        => $data['tipo'],
+                'importo'     => $nuovoImporto, 
+                'note'        => $data['note'] ?? null,
             ]);
 
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id
-                ])
-                ->with($this->flashError(__('gestionale.error_update_conto')));
+            DB::commit();
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
+                ->with($this->flashSuccess(__('gestionale.success_update_conto')));
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with($this->flashError($e->getMessage()));
         }
     }
 
-    /**
-     * Delete a specific expense from the chart of expenses.
-     *
-     * This method handles the deletion of an expense from the chart of epenses.
-     * It performs the following operations:
-     * - Checks if the expense has sub-expenses (sottoconti) and prevents deletion if any exist
-     * - Deletes related records from the conto_tabella_millesimale pivot table
-     * - Deletes the account record
-     * - Handles success and error responses with appropriate flash messages
-     * - Implements database transaction for data consistency
-     *
-     * @param \App\Models\Condominio $condominio The condominium entity
-     * @param \App\Models\Esercizio $esercizio The fiscal year/exercise entity
-     * @param \App\Models\PianoConto $pianoConto The chart of expenses entity
-     * @param \App\Models\Conto $conto The expense to be deleted
-     * 
-     * @return \Illuminate\Http\RedirectResponse
-     * 
-     * @throws \Exception If an error occurs during the deletion process
-     * 
-     * @warning The account cannot be deleted if it has sub-accounts
-     * 
-     * @uses \Illuminate\Support\Facades\DB
-     * @uses \Illuminate\Support\Facades\Log
-     * @uses \App\Traits\HandleFlashMessages
-     * 
-     * @transaction
-     * The method uses database transactions to ensure data consistency
-     * when deleting related records from conto_tabella_millesimale table
-     */
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
+        if ($conto->sottoconti()->exists()) return back()->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
+        
+        $lock = $conto->pianiRate()->where('piani_rate.attivo', true)->exists() || 
+                ($conto->parent && $conto->parent->pianiRate()->where('piani_rate.attivo', true)->exists());
 
-        if ($conto->sottoconti()->exists()) {
-
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio' => $esercizio->id,
-                    'pianoConto' => $pianoConto->id,
-                ])
-                ->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
-        }
+        if ($lock) return back()->with($this->flashError("Impossibile eliminare: la voce è ancorata a un piano rate attivo."));
 
         try {
-
             DB::beginTransaction();
-
-            DB::table('conto_tabella_millesimale')
-                ->where('conto_id', $conto->id)
-                ->delete();
-
+            $conto->tabelle()->detach(); 
             $conto->delete();
-
             DB::commit();
-
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id,
-                ])
-                ->with($this->flashSuccess(__('gestionale.success_delete_conto')));
-
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])->with($this->flashSuccess(__('gestionale.success_delete_conto')));
         } catch (\Exception $e) {
-
             DB::rollBack();
-            
-            Log::error("Errore durante l'eliminazione della voce di spesa:", [
-                'condominio_id' => $condominio->id,
-                'esercizio_id'  => $esercizio->id,
-                'pianoConto'    => $pianoConto->id,
-                'error'         => $e->getMessage(),
-                'trace'         => $e->getTraceAsString()
-            ]);
-            
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [
-                    'condominio' => $condominio->id,
-                    'esercizio'  => $esercizio->id,
-                    'pianoConto' => $pianoConto->id,
-                ])
-                ->with($this->flashError(__('gestionale.error_delete_conto')));
+            return back()->with($this->flashError($e->getMessage()));
         }
     }
-
 }

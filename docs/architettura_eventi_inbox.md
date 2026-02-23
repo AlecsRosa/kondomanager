@@ -111,6 +111,26 @@ Il componente **`EventDetailsDialog.vue`** protegge l'utente da errori contabili
 
 **Trigger:** Il flag `is_emitted` passa a `true` quando l'admin esegue `EmissioneRateController`.
 
+**Logica "Financial Waterfall" (Smart Debt)**
+
+Il sistema applica un algoritmo a cascata (CalculatesFinancialWaterfall) per presentare il debito in modo psicologicamente corretto al condòmino, garantendo la coerenza anche in scenari Multi-Gestione:
+
+    Isolamento Totale: Il calcolo è segregato per Condominio (spaziale) e per Esercizio Attivo (temporale), ignorando automaticamente i residui di gestioni chiuse per evitare doppi conteggi.
+
+    Assorbimento Asimmetrico:
+
+        Debiti: Vengono assorbiti ("nascosti") se la rata corrente li include già nel saldo iniziale.
+
+        Crediti: Vengono trattati come un "wallet virtuale" che erode il costo puro della rata, mostrando chiaramente quanto del credito è stato consumato.
+
+    Visualizzazione a 3 Stati:
+
+        🔴 Arretrati: Rate precedenti non pagate e non incorporate.
+
+        🟠 Debito Incorporato: Rata corrente maggiorata da debito pregresso.
+
+        🔵 Credito Usato: Rata corrente scontata/coperta da credito pregresso (con messaggi contestuali specifici).
+
 ---
 
 ## 5. Modulo Incassi & Emissioni (Backend) 
@@ -172,5 +192,17 @@ Idee approvate per la prossima iterazione:
 | **Context Filter** | 🎯 | Avanzamento del filtro condominio per navigazione più granulare. |
 
 ---
+## [1.9.2] - 2026-02-11
 
-**Documentazione aggiornata al 19/01/2026.** *Sistema progettato per scalabilità, sicurezza contabile e massima efficienza operativa.*
+### 🐛 Bug Fixes (Critical)
+- **Financial Waterfall Isolation:** Risolto bug critico "Cross-Condominium" e "Ghost Data". Il sistema ora filtra rigorosamente per Condominio e per Piani Rate dell'Esercizio Attivo.
+- **Credit asymmetry Fix:** Corretto il calcolo dei crediti che venivano sommati erroneamente al netto della rata. Ora il sistema ricostruisce il "Costo Puro" della rata per erodere correttamente il credito.
+
+### ✨ Features & Improvements
+- **Smart Debt Absorption:** Logica avanzata per nascondere l'avviso "Arretrati" se il debito è già spalmato nella rata corrente (evita doppia imputazione).
+- **UX Contestuale (Vue):**
+    - Nuovo stato "Rata Coperta da Credito Residuo" con messaggio specifico per distinguere crediti pregressi da sovrappagamenti recenti.
+    - Gestione visiva a 3 stati: 🟠 Warning (Debito Inc.), 🔵 Info (Credito Usato), 🔴 Danger (Arretrati).
+- **Backend Refactor:** Il Trait di calcolo lavora rigorosamente in **centesimi (integer)** per precisione assoluta.
+
+**Documentazione aggiornata al 11/02/2026.** *Sistema progettato per scalabilità, sicurezza contabile e massima efficienza operativa.*

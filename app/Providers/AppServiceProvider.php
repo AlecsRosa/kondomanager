@@ -14,6 +14,8 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Database\Events\MigrationsEnded;
 use App\Settings\GeneralSettings;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +32,49 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ====================================================================
+        // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)
+        // ====================================================================
+
+        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS
+        if (config('app.url') && str_contains(config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
+        // ====================================================================
+        // GESTIONE PROXY E HEADER DI RICHIESTA (X-Forwarded-*)
+        // ====================================================================
+        
+        // 1. Legge la config. Se manca nel .env, restituisce NULL.
+        $trustedProxies = config('app.trusted_proxies');
+
+        // 2. Esegue solo se c'è una configurazione attiva
+        if ($trustedProxies) {
+            
+            // Definiamo quali header guardare (Standard Laravel/Symfony)
+            $headers = Request::HEADER_X_FORWARDED_FOR |
+                       Request::HEADER_X_FORWARDED_HOST |
+                       Request::HEADER_X_FORWARDED_PORT |
+                       Request::HEADER_X_FORWARDED_PROTO |
+                       Request::HEADER_X_FORWARDED_AWS_ELB;
+
+            // Trasformiamo la config in array per Symfony
+            if ($trustedProxies === '*') {
+                // Wildcard per IPv4 e IPv6 (Fidati di tutto Internet)
+                $proxies = ['0.0.0.0/0', '::/0']; 
+            } else {
+                // Lista IP specifici
+                $proxies = is_array($trustedProxies) 
+                    ? $trustedProxies 
+                    : array_map('trim', explode(',', $trustedProxies));
+            }
+
+            // Applica la configurazione alla Request globale
+            Request::setTrustedProxies($proxies, $headers);
+        }
+        
+        // ====================================================================
+
         // Sincronizza la versione dopo ogni migrazione
         Event::listen(MigrationsEnded::class, function () {
             try {

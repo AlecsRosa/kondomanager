@@ -1,5 +1,3 @@
-// composables/useCurrencyFormatter.ts
-
 interface EuroFormatOptions {
   locale?: string;
   minimumFractionDigits?: number;
@@ -7,11 +5,11 @@ interface EuroFormatOptions {
   spacing?: "normal" | "none" | "nbsp";
   
   // Opzioni Logiche
-  fromCents?: boolean; // Default true (divide per 100)
+  fromCents?: boolean; 
   
-  // ✨ NUOVE OPZIONI VISIVE
-  forcePlus?: boolean; // Se true, mostra "+" per i positivi (es. "€ + 10,00")
-  showSpaceAfterSign?: boolean; // Spazio tra segno e numero
+  // Opzioni Visive
+  forcePlus?: boolean; 
+  showSpaceAfterSign?: boolean;
 }
 
 export const useCurrencyFormatter = (globalOptions: EuroFormatOptions = {}) => {
@@ -19,44 +17,45 @@ export const useCurrencyFormatter = (globalOptions: EuroFormatOptions = {}) => {
     locale: "it-IT",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-    spacing: "normal",
-    fromCents: true,
+    spacing: "nbsp", // Spazio non divisibile (consigliato)
+    fromCents: true, // Default: input in centesimi
     forcePlus: false,
-    showSpaceAfterSign: true,
+    showSpaceAfterSign: false, 
     ...globalOptions,
   };
 
   const format = (amount: number | null | undefined, opts: EuroFormatOptions = {}): string => {
+    // Gestione valori null/undefined
     if (amount === undefined || amount === null) return '-';
 
     const config = { ...baseConfig, ...opts };
 
-    // Calcolo valore reale
+    // 1. Calcolo valore reale (se fromCents è true, dividiamo per 100)
     const rawValue = config.fromCents ? amount / 100 : amount;
     const absValue = Math.abs(rawValue);
 
-    // Formattazione numero puro
+    // 2. Formattazione numero puro con Intl
     const numberString = new Intl.NumberFormat(config.locale, {
       minimumFractionDigits: config.minimumFractionDigits,
       maximumFractionDigits: config.maximumFractionDigits,
+      useGrouping: true, // <--- [FIX IMPORTANTE] Forza il punto delle migliaia (1.000)
     }).format(absValue);
 
-    // Gestione Spazi
+    // 3. Gestione Spazi
     const symbolSpace = config.spacing === "none" ? "" : config.spacing === "nbsp" ? "\u00A0" : " ";
-    const signSpace = config.showSpaceAfterSign ? " " : "";
+    const signSpace = config.showSpaceAfterSign ? (config.spacing === "nbsp" ? "\u00A0" : " ") : "";
 
-    // Determinazione Segno
+    // 4. Determinazione Segno
     let sign = "";
     if (rawValue < 0) {
       sign = "-";
     } else if (rawValue > 0 && config.forcePlus) {
       sign = "+";
     }
-    // Nota: se è 0, nessun segno
 
-    // Costruzione stringa: [€] [spazio] [segno] [spazio] [numero]
     const signPart = sign ? `${sign}${signSpace}` : "";
 
+    // 5. Output: €[spazio]segno[spazio]numero
     return `€${symbolSpace}${signPart}${numberString}`;
   };
 

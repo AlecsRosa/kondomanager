@@ -69,6 +69,8 @@ return [
     'success_update_conto'              => "The expense has been updated successfully.",
     'error_update_conto'                => "An error occurred while updating the expense.",
     'error_conto_has_sottoconti'        => "Unable to delete the expense because it contains sub-expenses. Please delete the sub-expenses first.",
+    'error_conto_used_in_active_plans'  => "Unable to delete: the expense is used in active rate plans: :plans.",
+    'error_conto_inherited_lock'        => "Unable to delete: this expense is part of the group ':parent' which is anchored to: :plans.",
     // Piano rate
     'success_create_piano_rate'         => "A new rate plan has been created successfully.",
     'error_create_piano_rate'           => "An error occurred while creating the new rate plan.",

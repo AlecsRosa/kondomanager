@@ -17,6 +17,10 @@ use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
 use App\Http\Controllers\Users\UserVerifyController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Artisan;
+use App\Http\Middleware\CheckExternalCron;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Request; // Assicurati di importare Request
 
 Route::get('/', WelcomeController::class)
     ->name('home');
@@ -150,21 +154,50 @@ Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
     });
 
 /*
+
 |--------------------------------------------------------------------------
-| System Upgrade Routes
+| Rotta per Cron Job Esterno
 |--------------------------------------------------------------------------
+| Questa rotta è dedicata esclusivamente all'esecuzione dello scheduler tramite un cron job esterno (es. cron-job.org).
+| Il middleware CheckExternalCron gestisce la sicurezza, autorizzando solo le richieste con token valido e provenienti dagli IP di cron-job.org.
+| La rotta è protetta da un token di sicurezza configurabile e da un controllo IP per garantire che solo cron-job.org possa accedervi, prevenendo abusi e accesssi non autorizzati.
 */
 
-/* Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
-    ->prefix('system/upgrade')
-    ->name('system.upgrade.')
-    ->group(function () {
-        Route::get('/', [SystemUpgradeController::class, 'index'])->name('index');
-        Route::post('/launch', [SystemUpgradeController::class, 'launch'])->name('launch');
-        Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
-        Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
-        Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
-    }); */
+Route::get('/system/run-scheduler', function (Request $request) {
+    
+    // 1. ATOMIC LOCK (Protezione Anti-Sovrapposizione)
+    // Se lo scheduler è lento e dura più di 1 minuto, impediamo che
+    // ne parta un secondo in parallelo che impallerebbe la CPU/RAM.
+    // Il lock scade automaticamente dopo 50 secondi.
+    $lock = Cache::lock('scheduler_running', 50);
+
+    if (!$lock->get()) {
+        // Se non riusciamo a prendere il lock, significa che sta già girando.
+        return response()->json([
+            'status' => 'skipped',
+            'message' => 'Scheduler già in esecuzione (Overlap Protection).',
+        ], 429);
+    }
+
+    try {
+        // Eseguiamo lo scheduler
+        Artisan::call('schedule:run');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Scheduler eseguito (WEB).',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
+    } finally {
+        // Rilasciamo il blocco immediatamente dopo aver finito
+        $lock->release();
+    }
+
+})->middleware([
+    CheckExternalCron::class, 
+    'throttle:3,1'
+]);
 
 /*
 |--------------------------------------------------------------------------

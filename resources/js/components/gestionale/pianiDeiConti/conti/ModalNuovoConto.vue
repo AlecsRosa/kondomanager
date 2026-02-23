@@ -22,7 +22,7 @@ interface Emits {
 
 interface Props {
   show: boolean
-  condominioId: string
+  condominioId: number
   esercizioId: number
   pianoContoId: number
 }
@@ -108,10 +108,8 @@ const submit = () => {
     },
     onError: (errors) => {
       console.error('Errore nella creazione della voce di spesa:', errors)
-      form.reset()
       isCapitolo.value = false
       isSottoConto.value = false
-      closeModal()
     }
   })
 }

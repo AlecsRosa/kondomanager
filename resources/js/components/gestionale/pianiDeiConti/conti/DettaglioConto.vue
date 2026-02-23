@@ -17,7 +17,7 @@ interface Emits {
   (e: 'select', conto: Conto): void
   (e: 'modifica', conto: Conto): void
   (e: 'aggiungi-tabella', conto: Conto): void 
-  (e: 'rimuovi-tabella', payload: { conto: Conto, tabellaId: number }): void // CAMBIATO: tabellaId invece di tabella
+  (e: 'rimuovi-tabella', payload: { conto: Conto, tabellaId: number }): void 
 }
 
 const props = defineProps<Props>()
@@ -54,12 +54,6 @@ const modificaConto = () => {
     emit('modifica', props.conto) 
   }
 }
-
-// Check if account is a chapter
-/* const isCapitolo = (conto: Conto) => {
-  const importoZero = conto.importo === '€0,00' || conto.importo === '0,00€' || conto.importo.includes('0,00')
-  return importoZero || (!!conto.sottoconti && conto.sottoconti.length > 0)
-} */
 
 const isCapitolo = (conto: Conto) => {
   const importoZero = 

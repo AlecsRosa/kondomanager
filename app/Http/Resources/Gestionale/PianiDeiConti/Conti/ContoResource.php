@@ -25,11 +25,14 @@ class ContoResource extends JsonResource
             'descrizione'    => $this->descrizione,
             'tipo'           => $this->tipo,
             'note'           => $this->note,
+            // *** LA RIGA MANCANTE ***
+            // Questo permette al frontend di leggere il "Lucchetto" dal Modello
+            'has_rate_emesse' => $this->has_rate_emesse,
             'sottoconti' => $this->whenLoaded('sottoconti', function () {
                 return ContoResource::collection($this->sottoconti);
             }),
-                 // Tabelle millesimali associate al conto
-         'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
+            // Tabelle millesimali associate al conto
+            'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
                 return $this->tabelleMillesimali->map(function ($tabellaMillesimale) {
                     return [
                         'id' => $tabellaMillesimale->id,

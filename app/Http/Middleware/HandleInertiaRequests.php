@@ -23,10 +23,6 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-        [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
-        
-        // Recuperiamo il locale impostato dal SetLocaleMiddleware
-    /*     $locale = app()->getLocale(); */
 
         $updateService = app(UpdateService::class);
 
@@ -54,7 +50,7 @@ class HandleInertiaRequests extends Middleware
                 ? url()->previous()
                 : null,
 
-            // Aggiungiamo il contatore globale
+            // Aggiungiamo il contatore globale admin inbox (con caching e logica ibrida)
             'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, now()->addMinutes(10), function () use ($request) {
 
                 // --- IL FIX FONDAMENTALE ---
@@ -68,15 +64,20 @@ class HandleInertiaRequests extends Middleware
                     ->whereJsonContains('meta->requires_action', true)
                     // 2. NON deve essere completato
                     ->where('is_completed', false)
-                    // 3. IL FIX: Deve essere "iniziato" (Data inizio <= Adesso)
-                    ->where('start_time', '<=', now()) 
-                    // 4. Logica visibilità (Escludiamo i privati degli utenti se siamo admin, o viceversa, a seconda della logica tua)
-                    // Nota: Assumo che 'hidden' siano i task di sistema visibili all'admin.
+                    // 3. IL FIX: Logica Ibrida (Tempo O Tipo)
+                    ->where(function (Builder $query) {
+                        // A. Scadenze temporali (es. rate scadute, lavori in data X)
+                        $query->where('start_time', '<=', now())
+                        // B. Priorità di TIPO (mostra SEMPRE, anche se la data è futura)
+                        ->orWhereJsonContains('meta->type', 'verifica_pagamento') // Segnalazione utente
+                        ->orWhereJsonContains('meta->type', 'segnalazione_guasto');     // Segnalazione guasto
+                    })
+                    // 4. Logica visibilità
                     ->where(fn(Builder $q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
                     ->count();
             }) : 0,
 
-            // AGGIUNTO: Stato aggiornamenti sistema
+            // Aggiungiamo stato aggiornamenti sistema
             'system_update' => [
                 'available' => $updateService->isAutoUpdateEnabled() 
                     ? $updateService->hasUpdateAvailable() 
@@ -85,7 +86,6 @@ class HandleInertiaRequests extends Middleware
                 'current_version' => config('app.version'),
             ],
 
-            'quote' => ['message' => trim($message), 'author' => trim($author)],
         ];
     }
 
