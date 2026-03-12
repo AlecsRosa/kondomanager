@@ -52,10 +52,14 @@ class AppServiceProvider extends ServiceProvider
         if (config('app.url')) {
             URL::forceRootUrl(config('app.url'));
             
-            // Se siamo in una sottocartella, forziamo il base path se non rilevato
-            $path = parse_url(config('app.url'), PHP_URL_PATH);
-            if ($path && $path !== '/') {
-                app('request')->server->set('SCRIPT_NAME', $path . '/index.php');
+            $urlPath = parse_url(config('app.url'), PHP_URL_PATH);
+            if ($urlPath && $urlPath !== '/') {
+                // Se Laravel non rileva correttamente che siamo in una sottocartella,
+                // forziamo l'ambiente a riconoscerlo.
+                $request = app('request');
+                if ($request->getBasePath() !== $urlPath) {
+                    $request->server->set('SCRIPT_NAME', $urlPath . '/index.php');
+                }
             }
         }
 
