@@ -7,6 +7,7 @@ import { defineConfig } from 'vite';
 import i18n from 'laravel-vue-i18n/vite';
 
 export default defineConfig({
+    base: '/kondomanager/build/',
     plugins: [
         laravel({
             input: ['resources/js/app.ts', 'resources/css/installer.css'],

@@ -56,7 +56,7 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
 
         // Wrapper per il link (se esiste ID)
         const linkWrapper = anagraficaId 
-            ? h('a', { href: `/admin/gestionale/${condominioId}/anagrafiche/${anagraficaId}/estratto-conto`, class: 'flex items-center' }, nameContent)
+            ? h('a', { href: (window as any).route('admin.gestionale.anagrafiche.estratto-conto', { condominio: condominioId, anagrafica: anagraficaId }), class: 'flex items-center' }, nameContent)
             : h('div', { class: 'flex items-center' }, nameContent);
 
         // 🔥 STRUTTURA A DUE RIGHE
