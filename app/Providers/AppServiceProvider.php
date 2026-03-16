@@ -14,6 +14,7 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Database\Events\MigrationsEnded;
 use App\Settings\GeneralSettings;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,5 +48,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
 
+        if (config('app.url')) {
+            URL::forceRootUrl(config('app.url'));
+        }
     }
 }
