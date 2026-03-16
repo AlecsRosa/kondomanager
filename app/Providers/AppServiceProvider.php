@@ -56,11 +56,10 @@ class AppServiceProvider extends ServiceProvider
             if ($urlPath && $urlPath !== '/') {
                 $request = app('request');
                 
-                // Forziamo il SCRIPT_NAME per aiutare Symfony/Laravel a calcolare il baseUrl
+                // Forziamo il SCRIPT_NAME e il BaseUrl direttamente sull'oggetto Request di Symfony
+                // per garantire che Laravel rimuova il prefisso /kondomanager dalle rotte.
                 $request->server->set('SCRIPT_NAME', $urlPath . '/index.php');
-                
-                // Aggiorniamo anche la variabile nell'ambiente globale se necessario
-                $_SERVER['SCRIPT_NAME'] = $urlPath . '/index.php';
+                $request->setBaseUrl($urlPath);
             }
         }
 
