@@ -21,6 +21,16 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', WelcomeController::class)
     ->name('home');
 
+Route::get('/debug-path', function () {
+    return [
+        'request_uri' => request()->getRequestUri(),
+        'base_path' => request()->getBasePath(),
+        'path_info' => request()->getPathInfo(),
+        'app_url' => config('app.url'),
+        'script_name' => request()->server('SCRIPT_NAME'),
+    ];
+});
+
 /*
 |--------------------------------------------------------------------------
 | User Routes

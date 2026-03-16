@@ -54,12 +54,13 @@ class AppServiceProvider extends ServiceProvider
             
             $urlPath = parse_url(config('app.url'), PHP_URL_PATH);
             if ($urlPath && $urlPath !== '/') {
-                // Se Laravel non rileva correttamente che siamo in una sottocartella,
-                // forziamo l'ambiente a riconoscerlo.
                 $request = app('request');
-                if ($request->getBasePath() !== $urlPath) {
-                    $request->server->set('SCRIPT_NAME', $urlPath . '/index.php');
-                }
+                
+                // Forziamo il SCRIPT_NAME per aiutare Symfony/Laravel a calcolare il baseUrl
+                $request->server->set('SCRIPT_NAME', $urlPath . '/index.php');
+                
+                // Aggiorniamo anche la variabile nell'ambiente globale se necessario
+                $_SERVER['SCRIPT_NAME'] = $urlPath . '/index.php';
             }
         }
 
