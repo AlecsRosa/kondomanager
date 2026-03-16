@@ -51,16 +51,6 @@ class AppServiceProvider extends ServiceProvider
 
         if (config('app.url')) {
             URL::forceRootUrl(config('app.url'));
-            
-            $urlPath = parse_url(config('app.url'), PHP_URL_PATH);
-            if ($urlPath && $urlPath !== '/') {
-                $request = app('request');
-                
-                // Forziamo il SCRIPT_NAME e il BaseUrl direttamente sull'oggetto Request di Symfony
-                // per garantire che Laravel rimuova il prefisso /kondomanager dalle rotte.
-                $request->server->set('SCRIPT_NAME', $urlPath . '/index.php');
-                $request->setBaseUrl($urlPath);
-            }
         }
 
     }
